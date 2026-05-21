@@ -220,14 +220,8 @@ void OnChartEvent(const int id, const long& lparam, const double& dparam,
         }
 
         int btnH = 22;
-        datetime zT1 = iTime(_Symbol, PERIOD_CURRENT, 17);
-        datetime zT2 = iTime(_Symbol, PERIOD_CURRENT, 3);
-        double midP  = (ChartGetDouble(0, CHART_PRICE_MAX) + ChartGetDouble(0, CHART_PRICE_MIN)) / 2;
-        int x1, y1, x2, y2;
-        ChartTimePriceToXY(0, 0, zT1, midP, x1, y1);
-        ChartTimePriceToXY(0, 0, zT2, midP, x2, y2);
-        int btnX = MathMax(2, x1);
-        int btnW = MathMax(60, x2 - x1);
+        int btnX, btnW;
+        GetButtonBounds(btnX, btnW);
 
         if(!g_draggingTP && !g_draggingSL) {
             if(mouseX >= btnX && mouseX <= btnX + btnW) {
@@ -734,6 +728,7 @@ void CreateEditBox(string nm, int x, int y, int w, int h, string txt) {
     ObjectSetInteger(0, nm, OBJPROP_ALIGN,        ALIGN_LEFT);
     ObjectSetInteger(0, nm, OBJPROP_SELECTABLE,   false);
     ObjectSetInteger(0, nm, OBJPROP_HIDDEN,       true);
+    ObjectSetInteger(0, nm, OBJPROP_ZORDER,       1);
 }
 
 void CreateOrderButton(string nm, string txt, int x, int y, int w, color bg, color border, int h = 28) {
@@ -751,6 +746,7 @@ void CreateOrderButton(string nm, string txt, int x, int y, int w, color bg, col
     ObjectSetInteger(0, nm, OBJPROP_BORDER_COLOR, border);
     ObjectSetInteger(0, nm, OBJPROP_SELECTABLE,   false);
     ObjectSetInteger(0, nm, OBJPROP_HIDDEN,       true);
+    ObjectSetInteger(0, nm, OBJPROP_ZORDER,       1);
 }
 
 int GetOrderPanelY() {
@@ -889,20 +885,35 @@ void CreateHLine(string nm, double price, color clr, int width, ENUM_LINE_STYLE 
     ObjectSetInteger(0, nm, OBJPROP_STYLE,      style);
     ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
     ObjectSetInteger(0, nm, OBJPROP_BACK,       true);
+    ObjectSetInteger(0, nm, OBJPROP_ZORDER,     0);
 }
 
-void CreateZoneRect(string nm, double priceLo, double priceHi, color clr, datetime t1, datetime t2) {
-    if(ObjectFind(0, nm) < 0) ObjectCreate(0, nm, OBJ_RECTANGLE, 0, t1, priceHi, t2, priceLo);
-    else {
-        ObjectMove(0, nm, 0, t1, priceHi);
-        ObjectMove(0, nm, 1, t2, priceLo);
-    }
-    ObjectSetInteger(0, nm, OBJPROP_COLOR,      clr);
-    ObjectSetInteger(0, nm, OBJPROP_FILL,       true);
-    ObjectSetInteger(0, nm, OBJPROP_BACK,       true);
-    ObjectSetInteger(0, nm, OBJPROP_STYLE,      STYLE_SOLID);
-    ObjectSetInteger(0, nm, OBJPROP_WIDTH,      1);
-    ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
+void CreateZoneRect(string nm, double priceLo, double priceHi, color clr, int btnX, int btnW) {
+    int yTop  = PriceToY(priceHi);
+    int yBot  = PriceToY(priceLo);
+    int zoneH = MathMax(1, yBot - yTop);
+    if(ObjectFind(0, nm) < 0) ObjectCreate(0, nm, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+    ObjectSetInteger(0, nm, OBJPROP_CORNER,      CORNER_LEFT_UPPER);
+    ObjectSetInteger(0, nm, OBJPROP_XDISTANCE,   btnX);
+    ObjectSetInteger(0, nm, OBJPROP_YDISTANCE,   yTop);
+    ObjectSetInteger(0, nm, OBJPROP_XSIZE,       btnW);
+    ObjectSetInteger(0, nm, OBJPROP_YSIZE,       zoneH);
+    ObjectSetInteger(0, nm, OBJPROP_BGCOLOR,     clr);
+    ObjectSetInteger(0, nm, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+    ObjectSetInteger(0, nm, OBJPROP_COLOR,       clr);
+    ObjectSetInteger(0, nm, OBJPROP_WIDTH,       0);
+    ObjectSetInteger(0, nm, OBJPROP_SELECTABLE,  false);
+    ObjectSetInteger(0, nm, OBJPROP_BACK,        true);
+}
+
+void ReposZoneRect(string nm, double priceLo, double priceHi, int btnX, int btnW) {
+    int yTop  = PriceToY(priceHi);
+    int yBot  = PriceToY(priceLo);
+    int zoneH = MathMax(1, yBot - yTop);
+    ObjectSetInteger(0, nm, OBJPROP_XDISTANCE, btnX);
+    ObjectSetInteger(0, nm, OBJPROP_YDISTANCE, yTop);
+    ObjectSetInteger(0, nm, OBJPROP_XSIZE,     btnW);
+    ObjectSetInteger(0, nm, OBJPROP_YSIZE,     zoneH);
 }
 
 int PriceToY(double price) {
@@ -923,14 +934,8 @@ double YToPrice(int y) {
 
 void CreatePriceButton(string nm, string lbl, double price, color bgClr, color borderClr, color txtClr) {
     int btnH = 22;
-    datetime zT1 = iTime(_Symbol, PERIOD_CURRENT, 17);
-    datetime zT2 = iTime(_Symbol, PERIOD_CURRENT, 3);
-    double midP  = (ChartGetDouble(0, CHART_PRICE_MAX) + ChartGetDouble(0, CHART_PRICE_MIN)) / 2;
-    int x1, y1, x2, y2;
-    ChartTimePriceToXY(0, 0, zT1, midP, x1, y1);
-    ChartTimePriceToXY(0, 0, zT2, midP, x2, y2);
-    int btnX = MathMax(0, x1 - 1);
-    int btnW = MathMax(60, x2 - x1);
+    int btnX, btnW;
+    GetButtonBounds(btnX, btnW);
     int btnY = PriceToY(price) - btnH;
     btnY = MathMax(2, MathMin((int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - btnH - 2, btnY));
 
@@ -946,12 +951,18 @@ void CreatePriceButton(string nm, string lbl, double price, color bgClr, color b
     ObjectSetInteger(0, nm, OBJPROP_WIDTH,       1);
     ObjectSetInteger(0, nm, OBJPROP_SELECTABLE,  false);
 
+    // Consolas size 8 ≈ 5.5px/char; clamp text to button width
+    int maxChars = MathMax(6, (int)((btnW - 12) / 5.5));
+    string dispLbl = (StringLen(lbl) > maxChars)
+                     ? StringSubstr(lbl, 0, maxChars - 2) + ".."
+                     : lbl;
+
     string tnm = nm + "Txt";
     if(ObjectFind(0, tnm) < 0) ObjectCreate(0, tnm, OBJ_LABEL, 0, 0, 0);
     ObjectSetInteger(0, tnm, OBJPROP_CORNER,     CORNER_LEFT_UPPER);
     ObjectSetInteger(0, tnm, OBJPROP_XDISTANCE,  btnX + 7);
     ObjectSetInteger(0, tnm, OBJPROP_YDISTANCE,  btnY + 5);
-    ObjectSetString (0, tnm, OBJPROP_TEXT,       lbl);
+    ObjectSetString (0, tnm, OBJPROP_TEXT,       dispLbl);
     ObjectSetInteger(0, tnm, OBJPROP_COLOR,      txtClr);
     ObjectSetInteger(0, tnm, OBJPROP_FONTSIZE,   8);
     ObjectSetString (0, tnm, OBJPROP_FONT,       "Consolas");
@@ -969,19 +980,35 @@ void ReposPriceBtn(string nm, double price, int btnX, int btnW) {
     ObjectSetInteger(0, nm + "Txt", OBJPROP_YDISTANCE, bY + 5);
 }
 
-void UpdatePreviewPositions() {
-    datetime zT1 = iTime(_Symbol, PERIOD_CURRENT, 17);
-    datetime zT2 = iTime(_Symbol, PERIOD_CURRENT, 3);
+void GetButtonBounds(int &btnX, int &btnW) {
+    datetime zT2 = iTime(_Symbol, PERIOD_CURRENT, 2);
     double midP  = (ChartGetDouble(0, CHART_PRICE_MAX) + ChartGetDouble(0, CHART_PRICE_MIN)) / 2;
-    int x1, y1, x2, y2;
-    ChartTimePriceToXY(0, 0, zT1, midP, x1, y1);
-    ChartTimePriceToXY(0, 0, zT2, midP, x2, y2);
-    int btnX = MathMax(0, x1 - 1);
-    int btnW = MathMax(60, x2 - x1);
+    int xRight, yRight;
+    ChartTimePriceToXY(0, 0, zT2, midP, xRight, yRight);
+    int panelLeft = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) - 215;
+    int rightEdge = MathMin(xRight, panelLeft - 5);
+    btnW = 200;
+    btnX = MathMax(0, rightEdge - btnW);
+}
+
+
+void UpdatePreviewPositions() {
+    int btnX, btnW;
+    GetButtonBounds(btnX, btnW);
 
     ReposPriceBtn("OPV_BtnEntry", g_pendingEntryPrice, btnX, btnW);
     if(g_pendingTPPrice > 0) ReposPriceBtn("OPV_BtnTP", g_pendingTPPrice, btnX, btnW);
     if(g_pendingSLPrice > 0) ReposPriceBtn("OPV_BtnSL", g_pendingSLPrice, btnX, btnW);
+
+    bool isBuy = (g_pendingOrderType == "BUY");
+    if(ObjectFind(0, "OPV_ZoneTP") >= 0 && g_pendingTPPrice > 0) {
+        if(isBuy) ReposZoneRect("OPV_ZoneTP", g_pendingEntryPrice, g_pendingTPPrice, btnX, btnW);
+        else       ReposZoneRect("OPV_ZoneTP", g_pendingTPPrice, g_pendingEntryPrice, btnX, btnW);
+    }
+    if(ObjectFind(0, "OPV_ZoneSL") >= 0 && g_pendingSLPrice > 0) {
+        if(isBuy) ReposZoneRect("OPV_ZoneSL", g_pendingSLPrice, g_pendingEntryPrice, btnX, btnW);
+        else       ReposZoneRect("OPV_ZoneSL", g_pendingEntryPrice, g_pendingSLPrice, btnX, btnW);
+    }
 }
 
 void ShowOrderPreview(bool deleteOld = true) {
@@ -1016,8 +1043,8 @@ void ShowOrderPreview(bool deleteOld = true) {
     color slClr     = C'220,50,50';
     string side = isBuy ? "Buy" : "Sell";
 
-    datetime zoneT1 = iTime(_Symbol, PERIOD_CURRENT, 17);
-    datetime zoneT2 = iTime(_Symbol, PERIOD_CURRENT, 3);
+    int btnX, btnW;
+    GetButtonBounds(btnX, btnW);
 
     // Entry: HLINE nét đứt + button xám
     CreateHLine("OPV_Entry", entry, C'160,160,160', 1, STYLE_DASH);
@@ -1028,8 +1055,8 @@ void ShowOrderPreview(bool deleteOld = true) {
     // TP: HLINE xanh + zone + button xanh (kéo được)
     if(tp > 0) {
         CreateHLine("OPV_TP", tp, tpClr, 1, STYLE_SOLID);
-        if(isBuy) CreateZoneRect("OPV_ZoneTP", entry, tp, tpZoneClr, zoneT1, zoneT2);
-        else       CreateZoneRect("OPV_ZoneTP", tp, entry, tpZoneClr, zoneT1, zoneT2);
+        if(isBuy) CreateZoneRect("OPV_ZoneTP", entry, tp, tpZoneClr, btnX, btnW);
+        else       CreateZoneRect("OPV_ZoneTP", tp, entry, tpZoneClr, btnX, btnW);
         CreatePriceButton("OPV_BtnTP",
             StringFormat("TP %s | %.2f$", DoubleToString(tp, _Digits), tpUSD),
             tp, C'15,130,65', C'0,180,90', clrWhite);
@@ -1038,8 +1065,8 @@ void ShowOrderPreview(bool deleteOld = true) {
     // SL: HLINE đỏ + zone + button đỏ (kéo được)
     if(sl > 0) {
         CreateHLine("OPV_SL", sl, slClr, 1, STYLE_SOLID);
-        if(isBuy) CreateZoneRect("OPV_ZoneSL", sl, entry, slZoneClr, zoneT1, zoneT2);
-        else       CreateZoneRect("OPV_ZoneSL", entry, sl, slZoneClr, zoneT1, zoneT2);
+        if(isBuy) CreateZoneRect("OPV_ZoneSL", sl, entry, slZoneClr, btnX, btnW);
+        else       CreateZoneRect("OPV_ZoneSL", entry, sl, slZoneClr, btnX, btnW);
         CreatePriceButton("OPV_BtnSL",
             StringFormat("SL %s | %.2f$", DoubleToString(sl, _Digits), slUSD),
             sl, C'160,25,25', C'210,60,60', clrWhite);

@@ -24,7 +24,6 @@ input int    InpDefaultSL   = 150;                // SL mặc định (pts)
 datetime CandleCloseTime;       // Biến kiểm tra giá chạy 1p một lần
 bool SlBeEnabled = false;       // Biến kiểm soát dời SL về điểm hòa vốn
 bool AlertCheckEnabled = false; // Biến kiểm soát kiểm tra giá với EMA
-string g_lastOrderType     = "";
 string g_pendingOrderType  = "";
 double g_pendingEntryPrice = 0;
 double g_pendingTPPrice    = 0;
@@ -58,6 +57,8 @@ int OnInit() {
 
     if(!CreateText(txtTimeCountDown, "TimeCountDown", "Countdown:  s"))
         return INIT_FAILED;
+
+    Draw();
 
     CreateOrderPanel();
     ChartSetInteger(0, CHART_EVENT_MOUSE_MOVE, 1);
@@ -246,9 +247,11 @@ void OnChartEvent(const int id, const long& lparam, const double& dparam,
                 }
             }
         }
+        bool isBuyOrder = (g_pendingOrderType == "BUY");
         if(g_draggingTP) {
             double np = NormalizeDouble(YToPrice(mouseY), _Digits);
-            if(MathAbs(np - g_pendingTPPrice) >= _Point) {
+            bool validSide = isBuyOrder ? (np > g_pendingEntryPrice) : (np < g_pendingEntryPrice);
+            if(validSide && MathAbs(np - g_pendingTPPrice) >= _Point) {
                 g_pendingTPPrice = np;
                 g_pendingTPPts   = MathAbs(np - g_pendingEntryPrice) / _Point;
                 ObjectSetString(0, "OP_EditTP", OBJPROP_TEXT, DoubleToString(g_pendingTPPts, 0));
@@ -256,7 +259,8 @@ void OnChartEvent(const int id, const long& lparam, const double& dparam,
             }
         } else if(g_draggingSL) {
             double np = NormalizeDouble(YToPrice(mouseY), _Digits);
-            if(MathAbs(np - g_pendingSLPrice) >= _Point) {
+            bool validSide = isBuyOrder ? (np < g_pendingEntryPrice) : (np > g_pendingEntryPrice);
+            if(validSide && MathAbs(np - g_pendingSLPrice) >= _Point) {
                 g_pendingSLPrice = np;
                 g_pendingSLPts   = MathAbs(np - g_pendingEntryPrice) / _Point;
                 ObjectSetString(0, "OP_EditSL", OBJPROP_TEXT, DoubleToString(g_pendingSLPts, 0));
@@ -268,6 +272,7 @@ void OnChartEvent(const int id, const long& lparam, const double& dparam,
 void OnDeinit(const int reason) {
     btnSLBE.Delete();
     btnAlertCheck.Delete();
+    txtTimeCountDown.Delete();
     DeletePanels();
     DeleteOrderPanel();
     ClearOrderPreview();
@@ -322,19 +327,6 @@ bool CreateButton(CChartObjectButton& button, string name, string des,
     button.Font("Consolas");
     button.Selectable(false);
     button.BorderColor(borderClr);
-
-    return true;
-}
-
-bool CreateLable(CChartObjectLabel& lable, string name, string des, int x,
-                 int y) {
-    // Tạo lable và thiết lập thuộc tính
-    if(!lable.Create(0, name, 0, x, y)) return false;
-
-    lable.Description(des);
-    lable.Color(clrWhite);
-    lable.Font("Calibri");
-    lable.FontSize(12);
 
     return true;
 }
@@ -408,7 +400,7 @@ void DrawPanels() {
     DrawPanelRect("PF_P2_hdr",  px, p2Y,      pw, 22, C'20,60,120', C'40,80,160', 2);
     DrawPanelRect("PF_P2_body", px, p2Y + 22, pw, 80, C'10,10,25',  C'40,80,140', 1);
 
-    DrawPanelLabel("PF_P2_ttl", "  Control Buttons", px+4, p2Y + 5, clrWhite, 10);
+    DrawPanelLabel("PF_P2_ttl", "  CONTROL BUTTONS", px+4, p2Y + 5, clrWhite, 10);
 }
 
 void DeletePanels() {
@@ -442,7 +434,6 @@ void UpdateInfoPanel() {
 void DrawMarkerPrice(ENUM_TIMEFRAMES timeframe, color lineColor) {
     double emaValue[];
     int handle = iMA(_Symbol, timeframe, 25, 0, MODE_EMA, PRICE_CLOSE);
-    ;
     if(handle < 0) return;
 
     ArraySetAsSeries(emaValue, true);
@@ -854,8 +845,6 @@ void ExecuteOrderFromPanel(string otype) {
     double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
     double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-    g_lastOrderType = otype;
-
     if(otype == "BUY")
         Trade.Buy(g_pendingLots, _Symbol, ask, g_pendingSLPrice, g_pendingTPPrice, g_pendingCmt);
     else if(otype == "SELL")
@@ -914,19 +903,6 @@ void CreateZoneRect(string nm, double priceLo, double priceHi, color clr, dateti
     ObjectSetInteger(0, nm, OBJPROP_STYLE,      STYLE_SOLID);
     ObjectSetInteger(0, nm, OBJPROP_WIDTH,      1);
     ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
-}
-
-void CreateTextObj(string nm, string txt, datetime t, double price, color clr,
-                   ENUM_ANCHOR_POINT anchor = ANCHOR_LEFT_UPPER) {
-    if(ObjectFind(0, nm) < 0) ObjectCreate(0, nm, OBJ_TEXT, 0, t, price);
-    ObjectMove(0, nm, 0, t, price);
-    ObjectSetString (0, nm, OBJPROP_TEXT,       txt);
-    ObjectSetInteger(0, nm, OBJPROP_COLOR,      clr);
-    ObjectSetInteger(0, nm, OBJPROP_FONTSIZE,   9);
-    ObjectSetString (0, nm, OBJPROP_FONT,       "Consolas");
-    ObjectSetInteger(0, nm, OBJPROP_ANCHOR,     anchor);
-    ObjectSetInteger(0, nm, OBJPROP_SELECTABLE, false);
-    ObjectSetInteger(0, nm, OBJPROP_BACK,       false);
 }
 
 int PriceToY(double price) {
@@ -1034,8 +1010,8 @@ void ShowOrderPreview(bool deleteOld = true) {
         if(tp > 0) tpUSD = MathAbs(tp - entry) * pv * g_pendingLots;
     }
 
-    color tpZoneClr = C'100,220,150';
-    color slZoneClr = C'230,120,120';
+    color tpZoneClr = C'180,240,200';
+    color slZoneClr = C'245,185,185';
     color tpClr     = C'0,210,90';
     color slClr     = C'220,50,50';
     string side = isBuy ? "Buy" : "Sell";

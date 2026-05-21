@@ -104,8 +104,6 @@ void OnTimer() {
     if(AlertCheckEnabled && _Period == PERIOD_M1) {
         CheckPriceWithEMA();
     }
-
-    CheckNOsdCandle();
 }
 
 void OnTick() {
@@ -271,7 +269,6 @@ void OnDeinit(const int reason) {
     DeleteOrderPanel();
     ClearOrderPreview();
     DeleteEMALines();
-    ObjectsDeleteAll(0, "NOsd_",  -1, OBJ_RECTANGLE);
     ObjectsDeleteAll(0, "Price ", -1, OBJ_TREND);
     ObjectsDeleteAll(0, "TimeframeLabel_", -1, OBJ_TEXT);
     EventKillTimer();
@@ -665,47 +662,6 @@ void CheckPriceWithEMA() {
             btnAlertCheck.BorderColor(C'230,65,65');
         }
     }
-}
-
-// Xác định nến NOsd: nến hiện tại là SELL, nến trước là BUY, high hiện tại > high trước
-void CheckNOsdCandle() {
-    double currOpen  = iOpen (_Symbol, PERIOD_CURRENT, 0);
-    double currClose = iClose(_Symbol, PERIOD_CURRENT, 0);
-    double currHigh  = iHigh (_Symbol, PERIOD_CURRENT, 0);
-    double currLow   = iLow  (_Symbol, PERIOD_CURRENT, 0);
-
-    double prevOpen  = iOpen (_Symbol, PERIOD_CURRENT, 1);
-    double prevClose = iClose(_Symbol, PERIOD_CURRENT, 1);
-    double prevHigh  = iHigh (_Symbol, PERIOD_CURRENT, 1);
-
-    bool currIsSell = currClose < currOpen;
-    bool prevIsBuy  = prevClose > prevOpen;
-    bool sweepsHigh = currHigh > prevHigh;
-
-    datetime candleTime = iTime(_Symbol, PERIOD_CURRENT, 0);
-    datetime candleEnd  = candleTime + PeriodSeconds(PERIOD_CURRENT) - 1;
-    string   name       = "NOsd_" + TimeToString(candleTime, TIME_DATE | TIME_MINUTES);
-
-    if(currIsSell && prevIsBuy && sweepsHigh) {
-        if(ObjectFind(0, name) < 0) {
-            ObjectCreate(0, name, OBJ_RECTANGLE, 0, candleTime, currHigh, candleEnd, currLow);
-            ObjectSetInteger(0, name, OBJPROP_COLOR,      clrLime);
-            ObjectSetInteger(0, name, OBJPROP_STYLE,      STYLE_SOLID);
-            ObjectSetInteger(0, name, OBJPROP_WIDTH,      1);
-            ObjectSetInteger(0, name, OBJPROP_FILL,       true);
-            ObjectSetInteger(0, name, OBJPROP_BACK,       true);
-            ObjectSetInteger(0, name, OBJPROP_SELECTABLE, false);
-        } else {
-            // Cập nhật khi nến đang hình thành
-            ObjectMove(0, name, 0, candleTime, currHigh);
-            ObjectMove(0, name, 1, candleEnd,  currLow);
-        }
-    } else {
-        if(ObjectFind(0, name) >= 0)
-            ObjectDelete(0, name);
-    }
-
-    ChartRedraw(0);
 }
 
 // ══════════════════════════════════════════════════════════

@@ -67,21 +67,26 @@ int OnInit() {
 }
 
 void OnTimer() {
-    // Check current time and next M1 candle close time
-    datetime currentTime = TimeCurrent();
-    datetime currentCandleCloseTime =
-        iTime(_Symbol, PERIOD_M1, 0) + PeriodSeconds(PERIOD_M1);
+    datetime currentTime         = TimeCurrent();
+    datetime m1CandleCloseTime   = iTime(_Symbol, PERIOD_M1,      0) + PeriodSeconds(PERIOD_M1);
+    datetime curCandleCloseTime  = iTime(_Symbol, PERIOD_CURRENT,  0) + PeriodSeconds(PERIOD_CURRENT);
 
-    int secondsToNextCandle = (int)(currentCandleCloseTime - currentTime - 1);
-    txtTimeCountDown.Description("    " + IntegerToString(secondsToNextCandle));
+    int secs = (int)(curCandleCloseTime - currentTime - 1);
+    if(secs < 0) secs = 0;
+    string countdownStr;
+    if(secs < 3600)
+        countdownStr = StringFormat("    %02d:%02d", secs / 60, secs % 60);
+    else
+        countdownStr = StringFormat("    %02d:%02d", secs / 3600, (secs % 3600) / 60);
+    txtTimeCountDown.Description(countdownStr);
 
-    txtTimeCountDown.Time(0, currentCandleCloseTime);
+    txtTimeCountDown.Time(0, curCandleCloseTime);
     txtTimeCountDown.Price(0, iClose(_Symbol, PERIOD_CURRENT, 0));
 
     bool isRunningEa = false;
-    if(currentCandleCloseTime != CandleCloseTime &&
-       currentCandleCloseTime - currentTime <= 2) {
-        CandleCloseTime = currentCandleCloseTime;
+    if(m1CandleCloseTime != CandleCloseTime &&
+       m1CandleCloseTime - currentTime <= 2) {
+        CandleCloseTime = m1CandleCloseTime;
         isRunningEa = true;
     }
 
@@ -112,19 +117,26 @@ void OnTick() {
 
 void OnChartEvent(const int id, const long& lparam, const double& dparam,
                   const string& sparam) {
-    // Cập nhật vị trí panel và nút khi chart thay đổi kích thước
+    // Cập nhật vị trí panel và nút khi chart thay đổi kích thước hoặc scroll
     if(id == CHARTEVENT_CHART_CHANGE) {
-        DrawPanels();
         int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
         int ch = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
-        int bx2 = cw - 210 + 15;
-        int p2Y2 = ch - 102 - 10;
-        ObjectSetInteger(0, "SLBEButton",       OBJPROP_XDISTANCE, bx2);
-        ObjectSetInteger(0, "SLBEButton",       OBJPROP_YDISTANCE, p2Y2 + 33);
-        ObjectSetInteger(0, "AlertCheckButton", OBJPROP_XDISTANCE, bx2);
-        ObjectSetInteger(0, "AlertCheckButton", OBJPROP_YDISTANCE, p2Y2 + 71);
-        RepositionOrderPanel();
-        if(g_pendingOrderType != "") ShowOrderPreview(false);
+        static int lastCw = 0, lastCh = 0;
+        bool resized = (cw != lastCw || ch != lastCh);
+        if(resized) {
+            lastCw = cw; lastCh = ch;
+            DrawPanels();
+            int bx2 = cw - 210 + 15;
+            int p2Y2 = ch - 102 - 10;
+            ObjectSetInteger(0, "SLBEButton",       OBJPROP_XDISTANCE, bx2);
+            ObjectSetInteger(0, "SLBEButton",       OBJPROP_YDISTANCE, p2Y2 + 33);
+            ObjectSetInteger(0, "AlertCheckButton", OBJPROP_XDISTANCE, bx2);
+            ObjectSetInteger(0, "AlertCheckButton", OBJPROP_YDISTANCE, p2Y2 + 71);
+            RepositionOrderPanel();
+            if(g_pendingOrderType != "") ShowOrderPreview(false);
+        } else {
+            if(g_pendingOrderType != "") UpdatePreviewPositions();
+        }
         ChartRedraw(0);
     }
     // Nhấn nút dời SL về điểm hòa vốn
@@ -157,7 +169,42 @@ void OnChartEvent(const int id, const long& lparam, const double& dparam,
         else if(sparam == "OP_BtnCancel") {
             ClearOrderPreview();
         }
+        else if(sparam == "OP_BtnLotsPlus" || sparam == "OP_BtnLotsMinus") {
+            double step = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
+            double minL = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
+            double maxL = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
+            double cur  = StringToDouble(ObjectGetString(0, "OP_EditLots", OBJPROP_TEXT));
+            double newL = NormalizeDouble(cur + (sparam == "OP_BtnLotsPlus" ? step : -step), 2);
+            newL = MathMax(minL, MathMin(maxL, newL));
+            ObjectSetString(0, "OP_EditLots", OBJPROP_TEXT, DoubleToString(newL, 2));
+            if(g_pendingOrderType != "") { g_pendingLots = newL; ShowOrderPreview(false); }
+        }
         ChartRedraw(0);
+    }
+    // Cập nhật preview khi user chỉnh edit box lots/TP/SL
+    if(id == CHARTEVENT_OBJECT_ENDEDIT && g_pendingOrderType != "") {
+        if(sparam == "OP_EditLots" || sparam == "OP_EditTP" || sparam == "OP_EditSL") {
+            double lots = StringToDouble(ObjectGetString(0, "OP_EditLots", OBJPROP_TEXT));
+            if(lots > 0) g_pendingLots = lots;
+
+            if(sparam == "OP_EditTP") {
+                double tpPts = StringToDouble(ObjectGetString(0, "OP_EditTP", OBJPROP_TEXT));
+                g_pendingTPPts = tpPts;
+                g_pendingTPPrice = (tpPts > 0)
+                    ? NormalizeDouble(g_pendingEntryPrice + (g_pendingOrderType == "BUY" ? 1 : -1) * tpPts * _Point, _Digits)
+                    : 0;
+            }
+            if(sparam == "OP_EditSL") {
+                double slPts = StringToDouble(ObjectGetString(0, "OP_EditSL", OBJPROP_TEXT));
+                g_pendingSLPts = slPts;
+                g_pendingSLPrice = (slPts > 0)
+                    ? NormalizeDouble(g_pendingEntryPrice + (g_pendingOrderType == "BUY" ? -1 : 1) * slPts * _Point, _Digits)
+                    : 0;
+            }
+
+            ShowOrderPreview(false);
+            ChartRedraw(0);
+        }
     }
     // Kéo button TP/SL bằng chuột
     if(id == CHARTEVENT_MOUSE_MOVE && g_pendingOrderType != "") {
@@ -165,23 +212,37 @@ void OnChartEvent(const int id, const long& lparam, const double& dparam,
         int mouseY  = (int)dparam;
         bool leftDn = ((int)StringToInteger(sparam) & 1) != 0;
 
-        if(!leftDn) { g_draggingTP = false; g_draggingSL = false; return; }
+        if(!leftDn) {
+            if(g_draggingTP || g_draggingSL)
+                ChartSetInteger(0, CHART_MOUSE_SCROLL, true);
+            g_draggingTP = false; g_draggingSL = false; return;
+        }
 
-        int cw   = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
-        int vb   = (int)ChartGetInteger(0, CHART_VISIBLE_BARS);
-        double bpx = (vb > 0 && cw > 0) ? (double)cw / vb : 6.0;
-        int btnW = 230, btnH = 22;
-        int btnX = MathMax(5, cw - (int)(bpx * 10.5) - btnW / 2);
+        int btnH = 22;
+        datetime zT1 = iTime(_Symbol, PERIOD_CURRENT, 17);
+        datetime zT2 = iTime(_Symbol, PERIOD_CURRENT, 3);
+        double midP  = (ChartGetDouble(0, CHART_PRICE_MAX) + ChartGetDouble(0, CHART_PRICE_MIN)) / 2;
+        int x1, y1, x2, y2;
+        ChartTimePriceToXY(0, 0, zT1, midP, x1, y1);
+        ChartTimePriceToXY(0, 0, zT2, midP, x2, y2);
+        int btnX = MathMax(2, x1);
+        int btnW = MathMax(60, x2 - x1);
 
         if(!g_draggingTP && !g_draggingSL) {
             if(mouseX >= btnX && mouseX <= btnX + btnW) {
                 if(g_pendingTPPrice > 0) {
-                    int tpY = PriceToY(g_pendingTPPrice) - btnH / 2;
-                    if(mouseY >= tpY && mouseY <= tpY + btnH) g_draggingTP = true;
+                    int tpY = PriceToY(g_pendingTPPrice) - btnH;
+                    if(mouseY >= tpY && mouseY <= tpY + btnH) {
+                        g_draggingTP = true;
+                        ChartSetInteger(0, CHART_MOUSE_SCROLL, false);
+                    }
                 }
                 if(!g_draggingTP && g_pendingSLPrice > 0) {
-                    int slY = PriceToY(g_pendingSLPrice) - btnH / 2;
-                    if(mouseY >= slY && mouseY <= slY + btnH) g_draggingSL = true;
+                    int slY = PriceToY(g_pendingSLPrice) - btnH;
+                    if(mouseY >= slY && mouseY <= slY + btnH) {
+                        g_draggingSL = true;
+                        ChartSetInteger(0, CHART_MOUSE_SCROLL, false);
+                    }
                 }
             }
         }
@@ -684,13 +745,13 @@ void CreateEditBox(string nm, int x, int y, int w, int h, string txt) {
     ObjectSetInteger(0, nm, OBJPROP_HIDDEN,       true);
 }
 
-void CreateOrderButton(string nm, string txt, int x, int y, int w, color bg, color border) {
+void CreateOrderButton(string nm, string txt, int x, int y, int w, color bg, color border, int h = 28) {
     if(ObjectFind(0, nm) < 0) ObjectCreate(0, nm, OBJ_BUTTON, 0, 0, 0);
     ObjectSetInteger(0, nm, OBJPROP_CORNER,       CORNER_LEFT_UPPER);
     ObjectSetInteger(0, nm, OBJPROP_XDISTANCE,    x);
     ObjectSetInteger(0, nm, OBJPROP_YDISTANCE,    y);
     ObjectSetInteger(0, nm, OBJPROP_XSIZE,        w);
-    ObjectSetInteger(0, nm, OBJPROP_YSIZE,        28);
+    ObjectSetInteger(0, nm, OBJPROP_YSIZE,        h);
     ObjectSetString (0, nm, OBJPROP_TEXT,         txt);
     ObjectSetString (0, nm, OBJPROP_FONT,         "Consolas");
     ObjectSetInteger(0, nm, OBJPROP_FONTSIZE,     9);
@@ -703,7 +764,7 @@ void CreateOrderButton(string nm, string txt, int x, int y, int w, color bg, col
 
 int GetOrderPanelY() {
     int chartH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
-    int opH   = 136;  // 22 header + 114 body
+    int opH   = 140;  // 22 header + 118 body
     int p1Bot = 158;  // Panel 1 bottom: y=30 + h=128
     int p2Top = chartH - 108;
     int avail = p2Top - p1Bot;
@@ -711,59 +772,67 @@ int GetOrderPanelY() {
 }
 
 void CreateBuySellButtons() {
+    ObjectDelete(0, "OP_BtnSell");
+    ObjectDelete(0, "OP_BtnBuy");
     int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
     int bw = 96, bx1 = cw - 206, bx2 = bx1 + 100;
     int by = GetOrderPanelY() + 22;
-    CreateOrderButton("OP_BtnSell", "▼  SELL", bx1, by+80, bw, C'180,20,20', C'230,65,65');
-    CreateOrderButton("OP_BtnBuy",  "▲  BUY",  bx2, by+80, bw, C'0,130,60',  C'45,185,90');
+    CreateOrderButton("OP_BtnSell", "▼  SELL", bx1, by+83, bw, C'180,20,20', C'230,65,65');
+    CreateOrderButton("OP_BtnBuy",  "▲  BUY",  bx2, by+83, bw, C'0,130,60',  C'45,185,90');
 }
 
 void CreateSendCancelButtons() {
+    ObjectDelete(0, "OP_BtnCancel");
+    ObjectDelete(0, "OP_BtnSend");
     int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
     int bw = 96, bx1 = cw - 206, bx2 = bx1 + 100;
     int by = GetOrderPanelY() + 22;
-    CreateOrderButton("OP_BtnCancel", "X  CANCEL", bx1, by+80, bw, C'55,55,55',  C'110,110,110');
-    CreateOrderButton("OP_BtnSend",   ">> SEND",   bx2, by+80, bw, C'20,60,150', C'80,130,230');
+    CreateOrderButton("OP_BtnCancel", "X  CANCEL", bx1, by+83, bw, C'55,55,55',  C'110,110,110');
+    CreateOrderButton("OP_BtnSend",   ">> SEND",   bx2, by+83, bw, C'20,60,150', C'80,130,230');
 }
 
 void RepositionOrderPanel() {
-    int cw  = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
-    int px  = cw - 210, py = GetOrderPanelY();
-    int bx1 = px + 4,   bx2 = bx1 + 100, by = py + 22;
-    ObjectSetInteger(0,"OP_hdr",     OBJPROP_XDISTANCE, px);   ObjectSetInteger(0,"OP_hdr",     OBJPROP_YDISTANCE, py);
-    ObjectSetInteger(0,"OP_body",    OBJPROP_XDISTANCE, px);   ObjectSetInteger(0,"OP_body",    OBJPROP_YDISTANCE, py+22);
-    ObjectSetInteger(0,"OP_ttl",     OBJPROP_XDISTANCE, px+4); ObjectSetInteger(0,"OP_ttl",     OBJPROP_YDISTANCE, py+5);
-    ObjectSetInteger(0,"OP_LbLots",  OBJPROP_XDISTANCE, bx1);  ObjectSetInteger(0,"OP_LbLots",  OBJPROP_YDISTANCE, by+4);
-    ObjectSetInteger(0,"OP_EditLots",OBJPROP_XDISTANCE, bx1);  ObjectSetInteger(0,"OP_EditLots",OBJPROP_YDISTANCE, by+16);
-    ObjectSetInteger(0,"OP_LbTP",    OBJPROP_XDISTANCE, bx1);  ObjectSetInteger(0,"OP_LbTP",    OBJPROP_YDISTANCE, by+42);
-    ObjectSetInteger(0,"OP_LbSL",    OBJPROP_XDISTANCE, bx2);  ObjectSetInteger(0,"OP_LbSL",    OBJPROP_YDISTANCE, by+42);
-    ObjectSetInteger(0,"OP_EditTP",  OBJPROP_XDISTANCE, bx1);  ObjectSetInteger(0,"OP_EditTP",  OBJPROP_YDISTANCE, by+54);
-    ObjectSetInteger(0,"OP_EditSL",  OBJPROP_XDISTANCE, bx2);  ObjectSetInteger(0,"OP_EditSL",  OBJPROP_YDISTANCE, by+54);
+    int cw      = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+    int px      = cw - 210, py = GetOrderPanelY();
+    int bx1     = px + 4, bx2 = bx1 + 100, by = py + 22;
+    int bx_plus = bx1 + 170;
+    ObjectSetInteger(0,"OP_hdr",         OBJPROP_XDISTANCE, px);       ObjectSetInteger(0,"OP_hdr",         OBJPROP_YDISTANCE, py);
+    ObjectSetInteger(0,"OP_body",        OBJPROP_XDISTANCE, px);       ObjectSetInteger(0,"OP_body",        OBJPROP_YDISTANCE, py+22);
+    ObjectSetInteger(0,"OP_ttl",         OBJPROP_XDISTANCE, px+4);     ObjectSetInteger(0,"OP_ttl",         OBJPROP_YDISTANCE, py+5);
+    ObjectSetInteger(0,"OP_LbLots",      OBJPROP_XDISTANCE, bx1);      ObjectSetInteger(0,"OP_LbLots",      OBJPROP_YDISTANCE, by+4);
+    ObjectSetInteger(0,"OP_BtnLotsMinus",OBJPROP_XDISTANCE, bx1);      ObjectSetInteger(0,"OP_BtnLotsMinus",OBJPROP_YDISTANCE, by+17);
+    ObjectSetInteger(0,"OP_EditLots",    OBJPROP_XDISTANCE, bx1+26);   ObjectSetInteger(0,"OP_EditLots",    OBJPROP_YDISTANCE, by+17);
+    ObjectSetInteger(0,"OP_BtnLotsPlus", OBJPROP_XDISTANCE, bx_plus);  ObjectSetInteger(0,"OP_BtnLotsPlus", OBJPROP_YDISTANCE, by+17);
+    ObjectSetInteger(0,"OP_LbTP",        OBJPROP_XDISTANCE, bx1);      ObjectSetInteger(0,"OP_LbTP",        OBJPROP_YDISTANCE, by+44);
+    ObjectSetInteger(0,"OP_LbSL",        OBJPROP_XDISTANCE, bx2);      ObjectSetInteger(0,"OP_LbSL",        OBJPROP_YDISTANCE, by+44);
+    ObjectSetInteger(0,"OP_EditTP",      OBJPROP_XDISTANCE, bx1);      ObjectSetInteger(0,"OP_EditTP",      OBJPROP_YDISTANCE, by+56);
+    ObjectSetInteger(0,"OP_EditSL",      OBJPROP_XDISTANCE, bx2);      ObjectSetInteger(0,"OP_EditSL",      OBJPROP_YDISTANCE, by+56);
     bool hasPending = (g_pendingOrderType != "");
-    string btnL = hasPending ? "OP_BtnCancel" : "OP_BtnSell";
-    string btnR = hasPending ? "OP_BtnSend"   : "OP_BtnBuy";
-    if(ObjectFind(0,btnL) >= 0) { ObjectSetInteger(0,btnL,OBJPROP_XDISTANCE,bx1); ObjectSetInteger(0,btnL,OBJPROP_YDISTANCE,by+80); }
-    if(ObjectFind(0,btnR) >= 0) { ObjectSetInteger(0,btnR,OBJPROP_XDISTANCE,bx2); ObjectSetInteger(0,btnR,OBJPROP_YDISTANCE,by+80); }
+    if(!hasPending) CreateBuySellButtons();
+    else            CreateSendCancelButtons();
 }
 
 void CreateOrderPanel() {
-    int cw  = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
-    int px  = cw - 210, py = GetOrderPanelY();
-    int pw  = 200, bw = 96;
-    int bx1 = px + 4, bx2 = bx1 + 100;
-    int by  = py + 22;
+    int cw      = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
+    int px      = cw - 210, py = GetOrderPanelY();
+    int pw      = 200, bw = 96;
+    int bx1     = px + 4, bx2 = bx1 + 100;
+    int bx_plus = bx1 + 170;
+    int by      = py + 22;
 
-    DrawPanelRect("OP_hdr",  px, py,      pw, 22,  C'20,60,120', C'40,80,160', 2);
-    DrawPanelRect("OP_body", px, py + 22, pw, 114, C'10,10,25',  C'40,80,140', 1);
+    DrawPanelRect("OP_hdr",  px, py,       pw, 22,  C'20,60,120', C'40,80,160', 2);
+    DrawPanelRect("OP_body", px, py + 22,  pw, 118, C'10,10,25',  C'40,80,140', 1);
     DrawPanelLabel("OP_ttl", "  ORDER SETUP", px+4, py+5, clrWhite, 10);
 
     DrawPanelLabel("OP_LbLots", "  Lots", bx1, by+4, clrSilver, 9);
-    CreateEditBox("OP_EditLots", bx1, by+16, pw-8, 20, DoubleToString(InpDefaultLots, 2));
+    CreateOrderButton("OP_BtnLotsMinus", "-", bx1,     by+17, 22, C'40,40,60', C'80,80,120', 22);
+    CreateEditBox    ("OP_EditLots",         bx1+26,   by+17, 140, 22, DoubleToString(InpDefaultLots, 2));
+    CreateOrderButton("OP_BtnLotsPlus",  "+", bx_plus, by+17, 22, C'40,40,60', C'80,80,120', 22);
 
-    DrawPanelLabel("OP_LbTP", "  TP (pts)", bx1, by+42, clrSilver, 9);
-    DrawPanelLabel("OP_LbSL", "  SL (pts)", bx2, by+42, clrSilver, 9);
-    CreateEditBox("OP_EditTP", bx1, by+54, bw, 20, IntegerToString(InpDefaultTP));
-    CreateEditBox("OP_EditSL", bx2, by+54, bw, 20, IntegerToString(InpDefaultSL));
+    DrawPanelLabel("OP_LbTP", "  TP (pts)", bx1, by+44, clrSilver, 9);
+    DrawPanelLabel("OP_LbSL", "  SL (pts)", bx2, by+44, clrSilver, 9);
+    CreateEditBox("OP_EditTP", bx1, by+56, bw, 22, IntegerToString(InpDefaultTP));
+    CreateEditBox("OP_EditSL", bx2, by+56, bw, 22, IntegerToString(InpDefaultSL));
 
     CreateBuySellButtons();
 }
@@ -771,7 +840,7 @@ void CreateOrderPanel() {
 void DeleteOrderPanel() {
     string nms[] = {
         "OP_hdr","OP_body","OP_ttl",
-        "OP_LbLots","OP_EditLots",
+        "OP_LbLots","OP_EditLots","OP_BtnLotsMinus","OP_BtnLotsPlus",
         "OP_LbTP","OP_LbSL","OP_EditTP","OP_EditSL",
         "OP_BtnSell","OP_BtnBuy","OP_BtnCancel","OP_BtnSend"
     };
@@ -877,12 +946,16 @@ double YToPrice(int y) {
 }
 
 void CreatePriceButton(string nm, string lbl, double price, color bgClr, color borderClr, color txtClr) {
-    int cw   = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
-    int vb   = (int)ChartGetInteger(0, CHART_VISIBLE_BARS);
-    double bpx = (vb > 0 && cw > 0) ? (double)cw / vb : 6.0;
-    int btnW = 230, btnH = 22;
-    int btnX = MathMax(5, cw - (int)(bpx * 10.5) - btnW / 2);
-    int btnY = PriceToY(price) - btnH / 2;
+    int btnH = 22;
+    datetime zT1 = iTime(_Symbol, PERIOD_CURRENT, 17);
+    datetime zT2 = iTime(_Symbol, PERIOD_CURRENT, 3);
+    double midP  = (ChartGetDouble(0, CHART_PRICE_MAX) + ChartGetDouble(0, CHART_PRICE_MIN)) / 2;
+    int x1, y1, x2, y2;
+    ChartTimePriceToXY(0, 0, zT1, midP, x1, y1);
+    ChartTimePriceToXY(0, 0, zT2, midP, x2, y2);
+    int btnX = MathMax(0, x1 - 1);
+    int btnW = MathMax(60, x2 - x1);
+    int btnY = PriceToY(price) - btnH;
     btnY = MathMax(2, MathMin((int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS) - btnH - 2, btnY));
 
     if(ObjectFind(0, nm) < 0) ObjectCreate(0, nm, OBJ_RECTANGLE_LABEL, 0, 0, 0);
@@ -909,6 +982,32 @@ void CreatePriceButton(string nm, string lbl, double price, color bgClr, color b
     ObjectSetInteger(0, tnm, OBJPROP_SELECTABLE, false);
 }
 
+void ReposPriceBtn(string nm, double price, int btnX, int btnW) {
+    int btnH = 22;
+    int ch   = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
+    int bY   = MathMax(2, MathMin(ch - btnH - 2, PriceToY(price) - btnH));
+    ObjectSetInteger(0, nm,         OBJPROP_XDISTANCE, btnX);
+    ObjectSetInteger(0, nm,         OBJPROP_YDISTANCE, bY);
+    ObjectSetInteger(0, nm,         OBJPROP_XSIZE,     btnW);
+    ObjectSetInteger(0, nm + "Txt", OBJPROP_XDISTANCE, btnX + 7);
+    ObjectSetInteger(0, nm + "Txt", OBJPROP_YDISTANCE, bY + 5);
+}
+
+void UpdatePreviewPositions() {
+    datetime zT1 = iTime(_Symbol, PERIOD_CURRENT, 17);
+    datetime zT2 = iTime(_Symbol, PERIOD_CURRENT, 3);
+    double midP  = (ChartGetDouble(0, CHART_PRICE_MAX) + ChartGetDouble(0, CHART_PRICE_MIN)) / 2;
+    int x1, y1, x2, y2;
+    ChartTimePriceToXY(0, 0, zT1, midP, x1, y1);
+    ChartTimePriceToXY(0, 0, zT2, midP, x2, y2);
+    int btnX = MathMax(0, x1 - 1);
+    int btnW = MathMax(60, x2 - x1);
+
+    ReposPriceBtn("OPV_BtnEntry", g_pendingEntryPrice, btnX, btnW);
+    if(g_pendingTPPrice > 0) ReposPriceBtn("OPV_BtnTP", g_pendingTPPrice, btnX, btnW);
+    if(g_pendingSLPrice > 0) ReposPriceBtn("OPV_BtnSL", g_pendingSLPrice, btnX, btnW);
+}
+
 void ShowOrderPreview(bool deleteOld = true) {
     double entry = g_pendingEntryPrice;
     double tp    = g_pendingTPPrice;
@@ -928,13 +1027,12 @@ void ShowOrderPreview(bool deleteOld = true) {
 
     double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
     double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
-    double balance   = AccountInfoDouble(ACCOUNT_BALANCE);
-    double slUSD = 0, tpUSD = 0, slPct = 0, tpPct = 0;
+    double slUSD = 0, tpUSD = 0;
     if(tickSize > 0) {
-        if(sl > 0) slUSD = MathAbs(entry - sl) / tickSize * tickValue * g_pendingLots;
-        if(tp > 0) tpUSD = MathAbs(tp - entry) / tickSize * tickValue * g_pendingLots;
+        double pv = tickValue / tickSize * 100;
+        if(sl > 0) slUSD = MathAbs(entry - sl) * pv * g_pendingLots;
+        if(tp > 0) tpUSD = MathAbs(tp - entry) * pv * g_pendingLots;
     }
-    if(balance > 0) { slPct = slUSD / balance * 100; tpPct = tpUSD / balance * 100; }
 
     color tpZoneClr = C'100,220,150';
     color slZoneClr = C'230,120,120';
@@ -957,7 +1055,7 @@ void ShowOrderPreview(bool deleteOld = true) {
         if(isBuy) CreateZoneRect("OPV_ZoneTP", entry, tp, tpZoneClr, zoneT1, zoneT2);
         else       CreateZoneRect("OPV_ZoneTP", tp, entry, tpZoneClr, zoneT1, zoneT2);
         CreatePriceButton("OPV_BtnTP",
-            StringFormat("TP %s | %.2f$ | %.2f%%", DoubleToString(tp, _Digits), tpUSD, tpPct),
+            StringFormat("TP %s | %.2f$", DoubleToString(tp, _Digits), tpUSD),
             tp, C'15,130,65', C'0,180,90', clrWhite);
     }
 
@@ -967,7 +1065,7 @@ void ShowOrderPreview(bool deleteOld = true) {
         if(isBuy) CreateZoneRect("OPV_ZoneSL", sl, entry, slZoneClr, zoneT1, zoneT2);
         else       CreateZoneRect("OPV_ZoneSL", entry, sl, slZoneClr, zoneT1, zoneT2);
         CreatePriceButton("OPV_BtnSL",
-            StringFormat("SL %s | %.2f$ | %.2f%%", DoubleToString(sl, _Digits), slUSD, slPct),
+            StringFormat("SL %s | %.2f$", DoubleToString(sl, _Digits), slUSD),
             sl, C'160,25,25', C'210,60,60', clrWhite);
     }
 

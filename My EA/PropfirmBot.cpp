@@ -31,15 +31,27 @@ double g_pendingSLPrice    = 0;
 double g_pendingTPPts      = 0;
 double g_pendingSLPts      = 0;
 double g_pendingLots       = 0;
-string g_pendingCmt        = "";
 bool   g_draggingTP        = false;
 bool   g_draggingSL        = false;
+
+int g_hEmaM1  = INVALID_HANDLE;
+int g_hEmaM5  = INVALID_HANDLE;
+int g_hEmaM15 = INVALID_HANDLE;
+int g_hEmaH1  = INVALID_HANDLE;
 
 //+------------------------------------------------------------------+
 //| Hàm khởi tạo Expert Advisor                                      |
 //+------------------------------------------------------------------+
 int OnInit() {
     EventSetTimer(1);
+
+    g_hEmaM1  = iMA(_Symbol, PERIOD_M1,  25, 0, MODE_EMA, PRICE_CLOSE);
+    g_hEmaM5  = iMA(_Symbol, PERIOD_M5,  25, 0, MODE_EMA, PRICE_CLOSE);
+    g_hEmaM15 = iMA(_Symbol, PERIOD_M15, 25, 0, MODE_EMA, PRICE_CLOSE);
+    g_hEmaH1  = iMA(_Symbol, PERIOD_H1,  25, 0, MODE_EMA, PRICE_CLOSE);
+    if(g_hEmaM1 == INVALID_HANDLE || g_hEmaM5 == INVALID_HANDLE ||
+       g_hEmaM15 == INVALID_HANDLE || g_hEmaH1 == INVALID_HANDLE)
+        return INIT_FAILED;
 
     int chartW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
     int chartH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
@@ -84,17 +96,11 @@ void OnTimer() {
     txtTimeCountDown.Time(0, curCandleCloseTime);
     txtTimeCountDown.Price(0, iClose(_Symbol, PERIOD_CURRENT, 0));
 
-    bool isRunningEa = false;
     if(m1CandleCloseTime != CandleCloseTime &&
        m1CandleCloseTime - currentTime <= 2) {
         CandleCloseTime = m1CandleCloseTime;
-        isRunningEa = true;
-    }
-
-    if(isRunningEa) {
         Draw();
 
-        isRunningEa = false;
     }
 
     UpdateInfoPanel();
@@ -269,6 +275,10 @@ void OnDeinit(const int reason) {
     DeleteOrderPanel();
     ClearOrderPreview();
     DeleteEMALines();
+    IndicatorRelease(g_hEmaM1);
+    IndicatorRelease(g_hEmaM5);
+    IndicatorRelease(g_hEmaM15);
+    IndicatorRelease(g_hEmaH1);
     ObjectsDeleteAll(0, "Price ", -1, OBJ_TREND);
     ObjectsDeleteAll(0, "TimeframeLabel_", -1, OBJ_TEXT);
     EventKillTimer();
@@ -422,10 +432,18 @@ void UpdateInfoPanel() {
         px+4, 126, spreadClr, 10);
 }
 
+int GetEmaHandle(ENUM_TIMEFRAMES tf) {
+    if(tf == PERIOD_M1)  return g_hEmaM1;
+    if(tf == PERIOD_M5)  return g_hEmaM5;
+    if(tf == PERIOD_M15) return g_hEmaM15;
+    if(tf == PERIOD_H1)  return g_hEmaH1;
+    return INVALID_HANDLE;
+}
+
 void DrawMarkerPrice(ENUM_TIMEFRAMES timeframe, color lineColor) {
     double emaValue[];
-    int handle = iMA(_Symbol, timeframe, 25, 0, MODE_EMA, PRICE_CLOSE);
-    if(handle < 0) return;
+    int handle = GetEmaHandle(timeframe);
+    if(handle == INVALID_HANDLE) return;
 
     ArraySetAsSeries(emaValue, true);
     if(CopyBuffer(handle, 0, 0, 1, emaValue) <= 0) return;
@@ -456,7 +474,7 @@ void DrawMarkerPrice(ENUM_TIMEFRAMES timeframe, color lineColor) {
 void DrawEMALine(ENUM_TIMEFRAMES tf, int emaPeriod, color lineColor, int lineWidth, int bars = 80) {
     string prefix = "EMA_" + IntegerToString((int)tf) + "_";
 
-    int handle = iMA(_Symbol, tf, emaPeriod, 0, MODE_EMA, PRICE_CLOSE);
+    int handle = GetEmaHandle(tf);
     if(handle == INVALID_HANDLE) return;
 
     double ema[];
@@ -583,40 +601,31 @@ void ModifyStopLoss(ulong ticket, double newStopLoss, double currentTP) {
 }
 
 void CheckAndAdjustStopLoss() {
-    // Duyệt qua tất cả các lệnh đang mở
+    double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+    double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+    if(tickValue <= 0) return;
+
     for(int index = PositionsTotal() - 1; index >= 0; index--) {
         ulong ticket = PositionGetTicket(index);
+        if(!PositionSelectByTicket(ticket)) continue;
 
-        if(PositionSelectByTicket(ticket)) {
-            double lot = PositionGetDouble(POSITION_VOLUME);
-            long type = PositionGetInteger(POSITION_TYPE);
-            double priceOpen = PositionGetDouble(POSITION_PRICE_OPEN);
-            double currentSL = PositionGetDouble(POSITION_SL);
-            double curentTP = PositionGetDouble(POSITION_TP);
+        double lot      = PositionGetDouble(POSITION_VOLUME);
+        long   type     = PositionGetInteger(POSITION_TYPE);
+        double priceOpen = PositionGetDouble(POSITION_PRICE_OPEN);
+        double currentSL = PositionGetDouble(POSITION_SL);
+        double currentTP = PositionGetDouble(POSITION_TP);
 
-            double tickValue =
-                SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
-            double tickSize = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+        double slDistance = (InpMaxLossAmount / (lot * tickValue * 100)) * tickSize;
+        double targetSL;
 
-            if(tickValue <= 0) continue;  // Tránh lỗi chia cho 0
-
-            double slDistance =
-                (InpMaxLossAmount / (lot * tickValue * 100)) * tickSize;
-            double targetSL = 0;
-
-            if(type == POSITION_TYPE_BUY) {
-                targetSL = NormalizeDouble(priceOpen - slDistance, _Digits);
-
-                if(currentSL == 0 || currentSL < targetSL) {
-                    ModifyStopLoss(ticket, targetSL, curentTP);
-                }
-            } else if(type == POSITION_TYPE_SELL) {
-                targetSL = NormalizeDouble(priceOpen + slDistance, _Digits);
-
-                if(currentSL == 0 || currentSL > targetSL) {
-                    ModifyStopLoss(ticket, targetSL, curentTP);
-                }
-            }
+        if(type == POSITION_TYPE_BUY) {
+            targetSL = NormalizeDouble(priceOpen - slDistance, _Digits);
+            if(currentSL == 0 || currentSL < targetSL)
+                ModifyStopLoss(ticket, targetSL, currentTP);
+        } else if(type == POSITION_TYPE_SELL) {
+            targetSL = NormalizeDouble(priceOpen + slDistance, _Digits);
+            if(currentSL == 0 || currentSL > targetSL)
+                ModifyStopLoss(ticket, targetSL, currentTP);
         }
     }
 }
@@ -624,15 +633,11 @@ void CheckAndAdjustStopLoss() {
 void CheckPriceWithEMA() {
     double emaM1[], emaM5[];
 
-    int handleM1 = iMA(_Symbol, PERIOD_M1, 25, 0, MODE_EMA, PRICE_CLOSE);
-    int handleM5 = iMA(_Symbol, PERIOD_M5, 25, 0, MODE_EMA, PRICE_CLOSE);
-    if(handleM1 < 0 || handleM5 < 0) return;
-
     ArraySetAsSeries(emaM1, true);
     ArraySetAsSeries(emaM5, true);
 
-    if(CopyBuffer(handleM1, 0, 0, 1, emaM1) <= 0) return;
-    if(CopyBuffer(handleM5, 0, 0, 1, emaM5) <= 0) return;
+    if(CopyBuffer(g_hEmaM1, 0, 0, 1, emaM1) <= 0) return;
+    if(CopyBuffer(g_hEmaM5, 0, 0, 1, emaM5) <= 0) return;
 
     double high = iHigh(_Symbol, PERIOD_CURRENT, 0),
            low = iLow(_Symbol, PERIOD_CURRENT, 0);
@@ -798,9 +803,9 @@ void ExecuteOrderFromPanel(string otype) {
     double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
     if(otype == "BUY")
-        Trade.Buy(g_pendingLots, _Symbol, ask, g_pendingSLPrice, g_pendingTPPrice, g_pendingCmt);
+        Trade.Buy(g_pendingLots, _Symbol, ask, g_pendingSLPrice, g_pendingTPPrice, "");
     else if(otype == "SELL")
-        Trade.Sell(g_pendingLots, _Symbol, bid, g_pendingSLPrice, g_pendingTPPrice, g_pendingCmt);
+        Trade.Sell(g_pendingLots, _Symbol, bid, g_pendingSLPrice, g_pendingTPPrice, "");
 }
 
 void PrepareOrder(string otype) {
@@ -814,7 +819,6 @@ void PrepareOrder(string otype) {
 
     g_pendingOrderType  = otype;
     g_pendingLots       = lots;
-    g_pendingCmt        = "";
     g_pendingTPPts      = tpPts;
     g_pendingSLPts      = slPts;
     g_pendingEntryPrice = close;
@@ -1066,6 +1070,5 @@ void ClearOrderPreview() {
     g_pendingTPPts      = 0;
     g_pendingSLPts      = 0;
     g_pendingLots       = 0;
-    g_pendingCmt        = "";
     ChartRedraw(0);
 }

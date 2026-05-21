@@ -9,16 +9,31 @@ CChartObjectText txtTimeCountDown;
 
 // Input parameters
 input group "=== CHUNG ===";
-input double InpMaxLossAmount = 15.0;             // Số tiền rủi ro tối đa trên mỗi lệnh (Ví dụ: 100$)
-input int FIVE = 50;                              // Số pip để đặt SL/TP cách điểm hòa vốn
-input group "=== MÀU CHỮ ===";
-input color CountdownColor = clrBlack;            // Màu sắc chữ đếm ngược
+input double InpMaxLossAmount = 15.0;   // Số tiền rủi ro tối đa / lệnh ($)
+input int    FIVE             = 50;     // Số pip dời SL về hòa vốn
 input group "=== THỜI GIAN ===";
-input int InpGMTOffset = 7;                       // Chênh lệch múi giờ so với GMT
+input int    InpGMTOffset     = 7;      // Chênh lệch múi giờ so với GMT
 input group "=== THIẾT LẬP LỆNH ===";
-input double InpDefaultLots = 0.01;               // Khối lượng mặc định
-input int    InpDefaultTP   = 200;                // TP mặc định (pts)
-input int    InpDefaultSL   = 150;                // SL mặc định (pts)
+input double InpDefaultLots   = 0.01;  // Khối lượng mặc định
+input int    InpDefaultTP     = 200;   // TP mặc định (pts)
+input int    InpDefaultSL     = 150;   // SL mặc định (pts)
+input group "=== EMA M1 ===";
+input color  InpEmaM1Color    = clrLime;        // Màu EMA M1
+input int    InpEmaM1Width    = 1;              // Độ dày EMA M1
+input group "=== EMA M5 ===";
+input color  InpEmaM5Color    = clrDodgerBlue;  // Màu EMA M5
+input int    InpEmaM5Width    = 2;              // Độ dày EMA M5
+input group "=== EMA M15 ===";
+input color  InpEmaM15Color   = clrOrange;      // Màu EMA M15
+input int    InpEmaM15Width   = 1;              // Độ dày EMA M15
+input group "=== EMA H1 ===";
+input color  InpEmaH1Color    = clrGray;        // Màu EMA H1
+input int    InpEmaH1Width    = 2;              // Độ dày EMA H1
+input group "=== MARKER GIÁ ===";
+input color  InpMarkerH1Color  = clrGray;       // Màu marker EMA H1
+input color  InpMarkerM15Color = clrTeal;       // Màu marker EMA M15
+input group "=== MÀU CHỮ ===";
+input color  CountdownColor    = clrBlack;      // Màu chữ đếm ngược
 
 // Global variables
 datetime CandleCloseTime;       // Biến kiểm tra giá chạy 1p một lần
@@ -513,28 +528,25 @@ void Draw() {
     ObjectsDeleteAll(0, "TimeframeLabel_", -1, OBJ_TEXT);
     DeleteEMALines();
 
-    // Marker H1 và M15 luôn vẽ
-    DrawMarkerPrice(PERIOD_H1,  clrGray);
-    DrawMarkerPrice(PERIOD_M15, clrTeal);
+    DrawMarkerPrice(PERIOD_H1,  InpMarkerH1Color);
+    DrawMarkerPrice(PERIOD_M15, InpMarkerM15Color);
 
-    // Số nến đang hiển thị trên chart
     int vis = (int)ChartGetInteger(0, CHART_VISIBLE_BARS);
 
-    // EMA thay đổi theo khung hiện tại, vẽ đủ toàn bộ nến hiển thị
     if(_Period == PERIOD_M1) {
         int barsM5 = vis * PeriodSeconds(PERIOD_M1) / PeriodSeconds(PERIOD_M5) + 5;
-        DrawEMALine(PERIOD_M1, 25, clrLime,       1, vis);
-        DrawEMALine(PERIOD_M5, 25, clrDodgerBlue, 2, barsM5);
+        DrawEMALine(PERIOD_M1, 25, InpEmaM1Color, InpEmaM1Width, vis);
+        DrawEMALine(PERIOD_M5, 25, InpEmaM5Color, InpEmaM5Width, barsM5);
     } else if(_Period == PERIOD_M5) {
         int barsM15 = vis * PeriodSeconds(PERIOD_M5) / PeriodSeconds(PERIOD_M15) + 5;
-        DrawEMALine(PERIOD_M5,  25, clrDodgerBlue, 1, vis);
-        DrawEMALine(PERIOD_M15, 25, clrOrange,     2, barsM15);
+        DrawEMALine(PERIOD_M5,  25, InpEmaM5Color,  InpEmaM5Width,  vis);
+        DrawEMALine(PERIOD_M15, 25, InpEmaM15Color, InpEmaM15Width, barsM15);
     } else if(_Period == PERIOD_M15) {
         int barsH1 = vis * PeriodSeconds(PERIOD_M15) / PeriodSeconds(PERIOD_H1) + 5;
-        DrawEMALine(PERIOD_M15, 25, clrOrange, 1, vis);
-        DrawEMALine(PERIOD_H1,  25, clrGray,   2, barsH1);
+        DrawEMALine(PERIOD_M15, 25, InpEmaM15Color, InpEmaM15Width, vis);
+        DrawEMALine(PERIOD_H1,  25, InpEmaH1Color,  InpEmaH1Width,  barsH1);
     } else if(_Period == PERIOD_H1) {
-        DrawEMALine(PERIOD_H1, 25, clrGray, 2, vis);
+        DrawEMALine(PERIOD_H1, 25, InpEmaH1Color, InpEmaH1Width, vis);
     }
 }
 

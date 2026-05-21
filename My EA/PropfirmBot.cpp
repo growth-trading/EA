@@ -71,15 +71,15 @@ int OnInit() {
     int chartW = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
     int chartH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
     int px     = chartW - 210;
-    int bx     = px + 15;
+    int bx     = px + 22;
     int p2Y    = chartH - 102 - 10;
 
     DrawPanels();
 
     // Buttons bên trong Panel 2 (Control Buttons) – góc phải dưới
-    if(!CreateButton(btnSLBE,       "SLBEButton",       "= BREAK EVEN",   C'0,110,50',  C'45,185,90',  bx, p2Y + 33, 170))
+    if(!CreateButton(btnSLBE,       "SLBEButton",       "= BREAK EVEN",    C'0,110,50',  C'45,185,90',  bx, p2Y + 33, 155))
         return INIT_FAILED;
-    if(!CreateButton(btnAlertCheck, "AlertCheckButton", "X CHECK EMA: OFF", C'145,15,15', C'230,65,65', bx, p2Y + 71, 170))
+    if(!CreateButton(btnAlertCheck, "AlertCheckButton", "X CHECK EMA: OFF", C'145,15,15', C'230,65,65', bx, p2Y + 71, 155))
         return INIT_FAILED;
 
     if(!CreateText(txtTimeCountDown, "TimeCountDown", "Countdown:  s"))
@@ -146,7 +146,7 @@ void OnChartEvent(const int id, const long& lparam, const double& dparam,
         if(resized) {
             lastCw = cw; lastCh = ch;
             DrawPanels();
-            int bx2 = cw - 210 + 15;
+            int bx2 = cw - 210 + 22;
             int p2Y2 = ch - 102 - 10;
             ObjectSetInteger(0, "SLBEButton",       OBJPROP_XDISTANCE, bx2);
             ObjectSetInteger(0, "SLBEButton",       OBJPROP_YDISTANCE, p2Y2 + 33);
@@ -410,8 +410,8 @@ void DrawPanels() {
 
     // ── Panel 2: Control Buttons (góc phải dưới) ─────────
     int chartH = (int)ChartGetInteger(0, CHART_HEIGHT_IN_PIXELS);
-    int p2H    = 102;                     // header 22 + body 80
-    int p2Y    = chartH - p2H - 6;      // 10px margin từ cạnh dưới
+    int p2H    = 102;
+    int p2Y    = chartH - p2H - 10;
 
     DrawPanelRect("PF_P2_hdr",  px, p2Y,      pw, 22, C'20,60,120', C'40,80,160', 2);
     DrawPanelRect("PF_P2_body", px, p2Y + 22, pw, 80, C'10,10,25',  C'40,80,140', 1);
@@ -735,7 +735,7 @@ void CreateBuySellButtons() {
     ObjectDelete(0, "OP_BtnSell");
     ObjectDelete(0, "OP_BtnBuy");
     int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
-    int bw = 96, bx1 = cw - 206, bx2 = bx1 + 100;
+    int bw = 94, bx1 = cw - 206, bx2 = bx1 + 98;
     int by = GetOrderPanelY() + 22;
     CreateOrderButton("OP_BtnSell", "▼  SELL", bx1, by+83, bw, C'180,20,20', C'230,65,65');
     CreateOrderButton("OP_BtnBuy",  "▲  BUY",  bx2, by+83, bw, C'0,130,60',  C'45,185,90');
@@ -745,7 +745,7 @@ void CreateSendCancelButtons() {
     ObjectDelete(0, "OP_BtnCancel");
     ObjectDelete(0, "OP_BtnSend");
     int cw = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
-    int bw = 96, bx1 = cw - 206, bx2 = bx1 + 100;
+    int bw = 94, bx1 = cw - 206, bx2 = bx1 + 98;
     int by = GetOrderPanelY() + 22;
     CreateOrderButton("OP_BtnCancel", "X  CANCEL", bx1, by+83, bw, C'55,55,55',  C'110,110,110');
     CreateOrderButton("OP_BtnSend",   ">> SEND",   bx2, by+83, bw, C'20,60,150', C'80,130,230');
@@ -754,7 +754,7 @@ void CreateSendCancelButtons() {
 void RepositionOrderPanel() {
     int cw      = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
     int px      = cw - 210, py = GetOrderPanelY();
-    int bx1     = px + 4, bx2 = bx1 + 100, by = py + 22;
+    int bx1     = px + 4, bx2 = bx1 + 98, by = py + 22;
     int bx_plus = bx1 + 170;
     ObjectSetInteger(0,"OP_hdr",         OBJPROP_XDISTANCE, px);       ObjectSetInteger(0,"OP_hdr",         OBJPROP_YDISTANCE, py);
     ObjectSetInteger(0,"OP_body",        OBJPROP_XDISTANCE, px);       ObjectSetInteger(0,"OP_body",        OBJPROP_YDISTANCE, py+22);
@@ -775,8 +775,8 @@ void RepositionOrderPanel() {
 void CreateOrderPanel() {
     int cw      = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS);
     int px      = cw - 210, py = GetOrderPanelY();
-    int pw      = 200, bw = 96;
-    int bx1     = px + 4, bx2 = bx1 + 100;
+    int pw      = 200, bw = 94;
+    int bx1     = px + 4, bx2 = bx1 + 98;
     int bx_plus = bx1 + 170;
     int by      = py + 22;
 

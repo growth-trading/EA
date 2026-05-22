@@ -1,0 +1,186 @@
+================================================================
+QUY TẮC VÀO LỆNH - DCA BASKET EA (XAUUSD)
+Phân tích từ ảnh chụp màn hình thực tế
+Ngày phân tích: 2026-05-22
+================================================================
+
+I. TỔNG QUAN CHIẾN LƯỢC
+----------------------------------------------------------------
+Chiến lược DCA Basket 2 chiều:
+- Vào lệnh bằng pending stop hai phía (Buy Stop + Sell Stop)
+- DCA (thêm lệnh) khi lệnh thua lỗ, tăng lot dần đều (+0.01 mỗi cấp)
+- Pending chiều ngược trail theo giá thị trường
+- Đóng toàn bộ basket khi tổng lợi nhuận đạt mục tiêu
+
+II. CHU KỲ GIAO DỊCH
+----------------------------------------------------------------
+BƯỚC 1 - KHỞI TẠO CHU KỲ MỚI:
+  - Đặt đồng thời 2 lệnh pending:
+      + XAUUSD BUY STOP  tại: Giá hỏi + InitialDistance (điểm)
+      + XAUUSD SELL STOP tại: Giá đặt - InitialDistance (điểm)
+  - Lot khởi tạo: InitialLot (cấu hình, ví dụ 0.05)
+  - Nhãn lệnh: "INIT_BUY_STOP" / "INIT_SELL_STOP"
+
+BƯỚC 2 - KÍCH HOẠT LỆNH:
+  - Khi giá tăng chạm Buy Stop → Buy Stop chuyển thành vị thế BUY đang mở
+  - Khi giá giảm chạm Sell Stop → Sell Stop chuyển thành vị thế SELL đang mở
+  - Lệnh pending còn lại (chiều ngược) KHÔNG xóa mà tiếp tục TRAIL theo giá
+
+BƯỚC 3 - TRAILING PENDING NGƯỢC CHIỀU:
+  - Nếu đang có vị thế BUY, không có SELL:
+      → Sell Stop trail upward = Giá đặt (Bid) - TrailingDistance (điểm)
+      → Mỗi tick, nếu giá tăng, Sell Stop được kéo lên cao hơn
+  - Nếu đang có vị thế SELL, không có BUY:
+      → Buy Stop trail downward = Giá hỏi (Ask) + TrailingDistance (điểm)
+      → Mỗi tick, nếu giá giảm, Buy Stop được kéo xuống thấp hơn
+
+BƯỚC 4 - DCA KHI THUA LỖ:
+  Phía BUY bị thua (giá giảm xuống):
+    - Khi giá giảm thêm DCAMinDistance từ lệnh BUY gần nhất
+    - Mở thêm lệnh BUY mới với: Lot = Lot_lệnh_trước + DCALotAdd
+    - Tiếp tục cho đến khi đủ MaxOrdersPerSide lệnh mỗi phía
+    - Ví dụ thực tế:
+        buy 0.05 tại 4551.56
+        buy 0.06 tại 4550.51  (cách 105 điểm)
+        buy 0.07 tại 4549.03  (cách 148 điểm)
+        buy 0.08 tại 4547.73  (cách 130 điểm)
+        buy 0.09 tại 4546.20  (cách 153 điểm)
+        buy 0.10 tại 4544.90  (cách 130 điểm)
+        buy 0.11 tại 4543.93  (cách ~100 điểm)
+
+  Phía SELL bị thua (giá tăng lên):
+    - Tương tự: khi giá tăng DCAMinDistance từ lệnh SELL gần nhất
+    - Mở SELL mới với lot tăng dần +0.01
+    - Ví dụ thực tế:
+        sell 0.05 tại 4546.82
+        sell 0.06 tại 4547.84  (cách 102 điểm)
+        sell 0.07 tại 4549.50  (cách 166 điểm)
+
+BƯỚC 5 - KÍCH HOẠT HEDGE:
+  - Khi pending chiều ngược bị kích hoạt (giá đảo chiều đủ mạnh):
+    → Vừa có vị thế BUY, vừa có vị thế SELL đang mở đồng thời
+    → Cả hai phía đều có thể DCA độc lập
+  - Ví dụ: 6 lệnh BUY đang lỗ + Sell Stop bị kích hoạt → thêm vị thế SELL
+
+BƯỚC 6 - ĐÓNG BASKET:
+  - Mỗi tick kiểm tra: Tổng lợi nhuận = SUM(profit tất cả lệnh đang mở)
+  - Nếu Tổng lợi nhuận >= TotalProfitTarget (VD: $5):
+      → Đóng NGAY TẤT CẢ vị thế đang mở (fast close)
+      → Xóa tất cả lệnh pending còn lại
+      → Chờ WaitNewCycle giây (VD: 5 giây)
+      → Quay lại BƯỚC 1 - bắt đầu chu kỳ mới
+
+III. THAM SỐ CẤU HÌNH (từ ảnh settings)
+----------------------------------------------------------------
+[Core]
+  MagicNumber          = 26051501
+  InitialLot           = 0.01       (lot ban đầu)
+  InitialDistance      = 300        (khoảng cách pending ban đầu, điểm)
+  TrailingDistance     = 300        (khoảng cách trailing pending ngược, điểm)
+  TotalProfitTarget    = 5.0        (USD - mục tiêu đóng basket)
+  MaxSpread            = 0          (0 = không lọc spread)
+  Slippage             = 30         (điểm)
+
+[DCA]
+  DCAMinDistance       = 300        (khoảng cách tối thiểu DCA, điểm)
+  DCALotAdd            = 0.01       (lot cộng thêm mỗi cấp DCA)
+  MaxOrdersPerSide     = 20         (lệnh tối đa mỗi phía Buy/Sell)
+  MinRestBetweenDCA    = 1          (thời gian nghỉ tối thiểu giữa 2 DCA)
+
+[DCA Multiplier khi tài khoản âm]
+  DCAMultEnabled       = true
+  DCAMultTriggerPct    = 5.0%       (âm bao nhiêu % balance thì kích hoạt)
+  DCAMultFactor        = 1.5        (hệ số nhân lot DCA)
+  DCAMaxLot            = 0.0        (0 = theo broker)
+
+[Protection]
+  PendingTP            = 0          (0 = không có TP riêng cho pending)
+  MinModifyPoints      = 1          (điểm tối thiểu để thực hiện modify)
+  DebugLog             = true
+
+[Fast Basket Close]
+  FastCloseLoops       = 8          (số vòng quét đóng nhanh)
+  AsyncClose           = true       (gửi lệnh đóng async)
+  TimerInterval        = 250ms      (timer quét khi không có tick)
+  WaitNewCycle         = 5          (giây chờ trước chu kỳ mới)
+
+[Red News Pause - MT5 Calendar]
+  PauseOnNews          = true
+  PauseMinutesBefore   = 30
+  ResumeMinutesAfter   = 30
+  FilterSessionA       = true  (JPY,CNY,AUD,NZD)
+  FilterSessionAu      = true  (EUR,GBP,CHF)
+  FilterSessionMy      = true  (USD,CAD)
+  NewsScanRange        = 24h
+  NewsScanInterval     = 60s
+  DeletePendingInNews  = true
+
+[Capital Guard]
+  CapGuardProfit       = true
+  CapGuardProfitPct    = 5.0%       (dừng khi lãi 5% vốn khởi chạy)
+  CapGuardLoss         = true
+  CapGuardLossPct      = 10.0%      (dừng khi lỗ 10% vốn khởi chạy)
+  CapGuardResume       = true       (tự khởi động lại khi có lệnh mới)
+  ManageAllMagic0      = true       (quản lý cả lệnh tay magic=0)
+
+IV. PHÂN TÍCH TRẠNG THÁI THỰC TẾ TỪ ẢNH
+----------------------------------------------------------------
+Tài khoản: Số dư ban đầu $10,105.12
+Symbol: XAUUSD (Vàng/Dollar)
+
+Diễn biến ghi nhận (13:48 - 13:56):
+
+[13:48] Buy side đang DCA 6 lệnh (lỗ -133.81 USD):
+  buy 0.05 @ 4551.56 | lỗ -33.70
+  buy 0.06 @ 4550.51 | lỗ -34.14
+  buy 0.07 @ 4549.03 | lỗ -29.47
+  buy 0.08 @ 4547.73 | lỗ -23.28
+  buy 0.09 @ 4546.20 | lỗ -12.42
+  buy 0.10 @ 4544.90 | lỗ  -0.80
+  Pending: sell stop @ 4544.51
+
+[13:49] Giá tiếp tục giảm:
+  buy 0.11 @ 4543.93 thêm vào (DCA cấp 7)
+  sell 0.05 @ 4545.74 được kích hoạt (sell stop triggered)
+  Tổng lỗ: -141.23 USD
+
+[13:50] Giá phục hồi nhẹ:
+  buy 0.11 lãi 6.49, buy 0.10 lãi 6.20
+  Tổng lỗ còn -135.62 USD
+
+[13:53-13:54] Giá phục hồi tốt:
+  buy 0.10, 0.11 đã có lãi đáng kể
+  sell 0.06 @ 4546.93 DCA vào (sell thêm khi giá tăng)
+  Tổng lỗ: -12.44 USD
+
+[13:54] BASKET CLOSE - Tất cả đóng đồng thời:
+  Sau khi tổng lợi nhuận đạt >= $5
+  Lệnh đóng: buy 0.05→0.11, sell 0.05, sell 0.06
+  → Màn hình trắng (clean slate)
+
+[13:54] CHU KỲ MỚI bắt đầu:
+  buy stop  0.05 @ 4548.20 (placed)
+  sell stop 0.05 @ 4546.82 (placed)
+
+[13:54-13:56] Chu kỳ SELL direction:
+  sell stop 0.05 @ 4546.82 được kích hoạt
+  sell 0.06 @ 4547.84 (DCA sell)
+  sell 0.07 @ 4549.50 (DCA sell)
+  buy stop được trail lên 4548.77, 4550.27...
+
+[13:56] Basket close lần 2:
+  Tổng lợi nhuận +0.94 → đóng sạch
+  Chu kỳ mới: buy stop 4548.77 + sell stop 4547.39
+
+V. KẾT LUẬN VỀ QUY TẮC
+----------------------------------------------------------------
+1. Không có Stop Loss cố định cho từng lệnh
+2. Không có Take Profit cố định cho từng lệnh
+3. Chỉ có basket TP = tổng lợi nhuận >= TotalProfitTarget
+4. Hệ thống tự phục hồi khi giá đảo chiều nhờ lot DCA tăng dần
+   (lệnh gần nhất có lot lớn nhất → lãi nhanh hơn khi giá hồi)
+5. Pending ngược chiều vừa là hedge, vừa là trigger để bắt đảo chiều
+6. Rủi ro: Nếu giá đi một chiều quá dài, lỗ có thể rất lớn (không có SL)
+7. Lợi nhuận ổn định khi giá dao động trong range
+
+================================================================

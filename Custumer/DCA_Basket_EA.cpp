@@ -4,7 +4,7 @@
 //|              Phân tích từ ảnh thực tế ngày 2026-05-19           |
 //+------------------------------------------------------------------+
 #property copyright "LongHD"
-#property version   "1.11"
+#property version   "1.12"
 #property strict
 
 #include <Trade\Trade.mqh>
@@ -17,14 +17,14 @@
 
 input group "========== 01. CORE =========="
 input double  InpInitialLot       = 0.01;      // Lot ban đầu
-input int     InpInitialDistance  = 300;       // Khoảng cách pending ban đầu, tính bằng point
-input int     InpTrailingDistance = 300;       // Khoảng cách trailing pending ngược chiều, tính bằng point
+input int     InpInitialDistance  = 100;       // Khoảng cách pending ban đầu
+input int     InpTrailingDistance = 300;       // Khoảng cách trailing pending ngược chiều
 input double  InpTotalProfitTP    = 5.0;       // Tổng lợi nhuận tiền để đóng tất cả lệnh
 input int     InpMaxSpread        = 0;         // Spread tối đa, 0 = không lọc
 input int     InpSlippage         = 30;        // Slippage/deviation
 
-input group "========== 02. DCA AM - HE SO CONG =========="
-input int     InpDCAMinDistance   = 300;       // Khoảng cách DCA âm tối thiểu so với lệnh gần nhất, tính bằng po
+input group "========== 02. DCA ÂM - HỆ SỐ CỘNG =========="
+input int     InpDCAMinDistance   = 100;       // Khoảng cách DCA âm tối thiểu so với lệnh gần nhất
 input double  InpDCALotAdd        = 0.01;      // Lot cộng thêm từ lệnh cùng chiều gần nhất
 input int     InpMaxOrdersPerSide = 20;        // Số lệnh tối đa mỗi phía Buy/Sell
 input int     InpMinRestDCA       = 1;         // Nghỉ tối thiểu giữa 2 lệnh DCA cùng phía (giây)
@@ -33,7 +33,7 @@ input group "========== 02B. DCA MULTIPLIER KHI AM TAI KHOAN =========="
 input bool    InpDCAMultEnabled   = true;      // Bật hệ số nhân khi âm % tài khoản
 input double  InpDCAMultTriggerPct= 5.0;       // Âm bao nhiêu % balance thì chuyển sang hệ số nhân
 input double  InpDCAMultFactor    = 1.5;       // Hệ số nhân lot DCA khi kích hoạt
-input double  InpDCAMaxLot        = 0.0;       // Giới hạn lot DCA tối đa, 0 = theo broker
+input double  InpDCAMaxLot        = 0.0;       // Giới hạn lot DCA tối đa
 
 input group "========== 03. OPTIONAL PROTECTION =========="
 input double  InpPendingTP        = 0;         // TP riêng cho pending, 0 = tắt
@@ -78,11 +78,19 @@ COrderInfo    g_ord;
 #define MAGIC_NUMBER 26051501
 
 //--- Trading state
-double   g_startCapital       = 0;
-bool     g_capGuardActive     = false;
-datetime g_lastDCATimeBuy     = 0;
-datetime g_lastDCATimeSell    = 0;
-datetime g_nextCycleAllowAt   = 0;
+double   g_startCapital         = 0;
+bool     g_capGuardActive       = false;
+datetime g_lastDCATimeBuy       = 0;
+datetime g_lastDCATimeSell      = 0;
+datetime g_nextCycleAllowAt     = 0;
+datetime g_lastLogTime          = 0;
+double   g_lastDCATriggerBuy    = 0;  // Giá trigger DCA buy gần nhất
+double   g_lastDCATriggerSell   = 0;  // Giá trigger DCA sell gần nhất
+double   g_lastDCALotBuy        = 0;  // Lot DCA buy gần nhất (fallback khi async chưa visible)
+double   g_lastDCALotSell       = 0;  // Lot DCA sell gần nhất
+datetime g_lastReplaceSellTime  = 0;  // Guard tái tạo SELL STOP sau news
+datetime g_lastReplaceBuyTime   = 0;  // Guard tái tạo BUY STOP sau news
+double   g_pip                  = 0;  // Pip chuẩn hóa: tự động theo digits broker
 
 //--- News cache
 struct NewsItem { datetime time; string currency; };
@@ -98,14 +106,16 @@ int OnInit()
     g_trade.SetExpertMagicNumber(MAGIC_NUMBER);
     g_trade.SetDeviationInPoints(InpSlippage);
     g_trade.SetAsyncMode(InpAsyncClose);
-    g_trade.SetTypeFilling(ORDER_FILLING_FOK);
+    g_trade.SetTypeFilling(ORDER_FILLING_RETURN);
+
+    // Chuẩn hóa pip: digits 3 hoặc 5 → broker dùng thêm 1 chữ số thập phân
+    // → 1 pip = 10 points. Ngược lại (2, 4 digits) → 1 pip = 1 point.
+    int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
+    g_pip = _Point * ((digits == 3 || digits == 5) ? 10.0 : 1.0);
 
     g_startCapital = AccountInfoDouble(ACCOUNT_BALANCE);
 
     EventSetMillisecondTimer(InpTimerMS);
-
-    Log("EA v1.11 started | Magic=" + IntegerToString(MAGIC_NUMBER) +
-        " | Capital=" + DoubleToString(g_startCapital, 2));
 
     return INIT_SUCCEEDED;
 }
@@ -133,7 +143,36 @@ void RunEA()
     // --- Lọc spread ---
     if(!CheckSpread()) return;
 
-    // --- Cập nhật và kiểm tra tin tức ---
+    int buyPos   = CountPositions(POSITION_TYPE_BUY);
+    int sellPos  = CountPositions(POSITION_TYPE_SELL);
+    int buyPend  = CountPending(ORDER_TYPE_BUY_STOP);
+    int sellPend = CountPending(ORDER_TYPE_SELL_STOP);
+    int totalPos = buyPos + sellPos;
+
+    // Luôn kiểm tra basket close trước (kể cả khi đang trong vùng tin)
+    if(totalPos > 0)
+    {
+        double totalProfit = GetTotalProfit();
+
+        // Log throttle: chỉ log 1 lần/giây
+        if(TimeCurrent() != g_lastLogTime)
+        {
+            Log("Profit: " + DoubleToString(totalProfit, 2) + " USD"
+                + " | B:" + IntegerToString(buyPos)
+                + " S:" + IntegerToString(sellPos));
+            g_lastLogTime = TimeCurrent();
+        }
+
+        if(totalProfit >= InpTotalProfitTP)
+        {
+            Log(">>> BASKET CLOSE! Profit=" + DoubleToString(totalProfit, 2));
+            CloseAllOrders();
+            g_nextCycleAllowAt = TimeCurrent() + InpWaitNewCycleSec;
+            return;
+        }
+    }
+
+    // --- Kiểm tra tin tức: chỉ block mở lệnh mới / DCA / trailing ---
     if(InpNewsPauseEnabled)
     {
         UpdateNewsCache();
@@ -147,12 +186,6 @@ void RunEA()
         }
     }
 
-    int buyPos   = CountPositions(POSITION_TYPE_BUY);
-    int sellPos  = CountPositions(POSITION_TYPE_SELL);
-    int buyPend  = CountPending(ORDER_TYPE_BUY_STOP);
-    int sellPend = CountPending(ORDER_TYPE_SELL_STOP);
-    int totalPos = buyPos + sellPos;
-
     // Không có gì → bắt đầu chu kỳ mới
     if(totalPos == 0 && buyPend == 0 && sellPend == 0)
     {
@@ -160,22 +193,9 @@ void RunEA()
         return;
     }
 
-    // Có vị thế → kiểm tra đóng basket + DCA + trailing
+    // Có vị thế → DCA + trailing
     if(totalPos > 0)
     {
-        double totalProfit = GetTotalProfit();
-        Log("Profit: " + DoubleToString(totalProfit, 2) + " USD"
-            + " | B:" + IntegerToString(buyPos)
-            + " S:" + IntegerToString(sellPos));
-
-        if(totalProfit >= InpTotalProfitTP)
-        {
-            Log(">>> BASKET CLOSE! Profit=" + DoubleToString(totalProfit, 2));
-            CloseAllOrders();
-            g_nextCycleAllowAt = TimeCurrent() + InpWaitNewCycleSec;
-            return;
-        }
-
         if(buyPos > 0 && buyPos < InpMaxOrdersPerSide)
             ManageDCA(POSITION_TYPE_BUY);
 
@@ -191,18 +211,17 @@ void RunEA()
 //+------------------------------------------------------------------+
 void PlaceInitialPending()
 {
-    double ask   = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-    double bid   = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
+    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-    double buyPrice  = NormalizePrice(ask + InpInitialDistance * point);
-    double sellPrice = NormalizePrice(bid - InpInitialDistance * point);
+    double buyPrice  = NormalizePrice(ask + InpInitialDistance * g_pip);
+    double sellPrice = NormalizePrice(bid - InpInitialDistance * g_pip);
 
     double tpBuy = 0, tpSell = 0;
     if(InpPendingTP > 0)
     {
-        tpBuy  = NormalizePrice(buyPrice  + InpPendingTP * point);
-        tpSell = NormalizePrice(sellPrice - InpPendingTP * point);
+        tpBuy  = NormalizePrice(buyPrice  + InpPendingTP * g_pip);
+        tpSell = NormalizePrice(sellPrice - InpPendingTP * g_pip);
     }
 
     bool ok1 = g_trade.BuyStop(InpInitialLot, buyPrice, _Symbol, 0, tpBuy,
@@ -215,6 +234,9 @@ void PlaceInitialPending()
         " Lot=" + DoubleToString(InpInitialLot, 2) +
         (ok1 && ok2 ? " [OK]" : " [FAIL]"));
 
+    // Khoá 2 giây sau khi gửi lệnh async — tránh đặt trùng khi OrdersTotal() chưa cập nhật
+    if(ok1 || ok2)
+        g_nextCycleAllowAt = TimeCurrent() + 2;
 }
 
 //+------------------------------------------------------------------+
@@ -222,31 +244,34 @@ void PlaceInitialPending()
 //+------------------------------------------------------------------+
 void ManageDCA(ENUM_POSITION_TYPE dir)
 {
-    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-    double bid   = SymbolInfoDouble(_Symbol, SYMBOL_BID);
-    double ask   = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+    double bid     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    double ask     = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+    double dcaDist = InpDCAMinDistance * g_pip;
 
-    // Kiểm tra thời gian nghỉ
+    // Kiểm tra thời gian nghỉ tối thiểu
     datetime lastDCA = (dir == POSITION_TYPE_BUY) ? g_lastDCATimeBuy : g_lastDCATimeSell;
     if(TimeCurrent() - lastDCA < InpMinRestDCA) return;
 
-    // Giá bất lợi nhất (lệnh DCA xa nhất)
-    double extremePrice = GetExtremePositionPrice(dir);
-    if(extremePrice <= 0) return;
-
-    // Tính mức giá kích hoạt DCA tiếp theo
-    double triggerPrice = (dir == POSITION_TYPE_BUY)
-                          ? extremePrice - InpDCAMinDistance * point
-                          : extremePrice + InpDCAMinDistance * point;
-
-    bool triggered = (dir == POSITION_TYPE_BUY) ? (bid <= triggerPrice)
-                                                 : (ask >= triggerPrice);
-    if(!triggered) return;
+    // Kiểm tra khoảng cách từ trigger DCA gần nhất (tránh vào liên tục khi async)
+    double lastTrigger = (dir == POSITION_TYPE_BUY) ? g_lastDCATriggerBuy : g_lastDCATriggerSell;
+    if(lastTrigger > 0)
+    {
+        if(dir == POSITION_TYPE_BUY  && bid > lastTrigger - dcaDist) return;
+        if(dir == POSITION_TYPE_SELL && ask < lastTrigger + dcaDist) return;
+    }
+    else
+    {
+        // Lần DCA đầu tiên: so với giá vào lệnh gốc
+        double extremePrice = GetExtremePositionPrice(dir);
+        if(extremePrice <= 0) return;
+        if(dir == POSITION_TYPE_BUY  && bid > extremePrice - dcaDist) return;
+        if(dir == POSITION_TYPE_SELL && ask < extremePrice + dcaDist) return;
+    }
 
     // Tính lot mới
-    double lastLot    = GetExtremeLot(dir);
-    double mult       = GetDCAMultiplier();
-    double newLot     = NormalizeLot(lastLot + InpDCALotAdd * mult);
+    double lastLot = GetExtremeLot(dir);
+    double mult    = GetDCAMultiplier();
+    double newLot  = NormalizeLot(lastLot + InpDCALotAdd * mult);
     if(InpDCAMaxLot > 0 && newLot > InpDCAMaxLot)
         newLot = NormalizeLot(InpDCAMaxLot);
 
@@ -255,11 +280,23 @@ void ManageDCA(ENUM_POSITION_TYPE dir)
                                          : g_trade.Sell(newLot, _Symbol, 0, 0, 0, comment);
     if(ok)
     {
-        if(dir == POSITION_TYPE_BUY) g_lastDCATimeBuy  = TimeCurrent();
-        else                          g_lastDCATimeSell = TimeCurrent();
+        // Lưu giá trigger ngay lập tức — không chờ position fill vào danh sách
+        if(dir == POSITION_TYPE_BUY)
+        {
+            g_lastDCATriggerBuy = bid;
+            g_lastDCATimeBuy    = TimeCurrent();
+            g_lastDCALotBuy     = newLot;
+        }
+        else
+        {
+            g_lastDCATriggerSell = ask;
+            g_lastDCATimeSell    = TimeCurrent();
+            g_lastDCALotSell     = newLot;
+        }
+
         Log("DCA " + (dir==POSITION_TYPE_BUY?"BUY":"SELL") +
             " Lot=" + DoubleToString(newLot, 2) +
-            " Trigger=" + DoubleToString(triggerPrice, _Digits) +
+            " @" + DoubleToString(dir==POSITION_TYPE_BUY?bid:ask, _Digits) +
             " Mult=" + DoubleToString(mult, 2));
     }
 }
@@ -269,31 +306,59 @@ void ManageDCA(ENUM_POSITION_TYPE dir)
 //+------------------------------------------------------------------+
 void TrailOppositePending(int buyPos, int sellPos, int buyPend, int sellPend)
 {
-    double point = SymbolInfoDouble(_Symbol, SYMBOL_POINT);
-    double ask   = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
-    double bid   = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
+    double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-    // BUY đang mở, chưa có SELL → trail Sell Stop lên
-    if(buyPos > 0 && sellPos == 0 && sellPend > 0)
+    // BUY đang mở, chưa có SELL
+    if(buyPos > 0 && sellPos == 0)
     {
-        double newStop     = NormalizePrice(bid - InpTrailingDistance * point);
-        double currentStop = GetPendingPrice(ORDER_TYPE_SELL_STOP);
-        if(newStop > currentStop + InpMinModifyPoints * point)
+        double newStop = NormalizePrice(bid - InpTrailingDistance * g_pip);
+        if(sellPend == 0)
         {
-            ModifyPendingStop(ORDER_TYPE_SELL_STOP, newStop);
-            Log("Trail SellStop → " + DoubleToString(newStop, _Digits));
+            // Tái tạo SELL STOP nếu bị xóa (ví dụ: news zone xóa pending)
+            // Guard 2 giây tránh re-place spam khi async chưa visible
+            if(TimeCurrent() - g_lastReplaceSellTime >= 2)
+            {
+                g_trade.SellStop(InpInitialLot, newStop, _Symbol, 0, 0,
+                                 ORDER_TIME_GTC, 0, "TRAIL_SELL_STOP");
+                g_lastReplaceSellTime = TimeCurrent();
+                Log("Re-place SellStop @ " + DoubleToString(newStop, _Digits));
+            }
+        }
+        else
+        {
+            double currentStop = GetPendingPrice(ORDER_TYPE_SELL_STOP);
+            if(newStop > currentStop + InpMinModifyPoints * g_pip)
+            {
+                ModifyPendingStop(ORDER_TYPE_SELL_STOP, newStop);
+                Log("Trail SellStop → " + DoubleToString(newStop, _Digits));
+            }
         }
     }
 
-    // SELL đang mở, chưa có BUY → trail Buy Stop xuống
-    if(sellPos > 0 && buyPos == 0 && buyPend > 0)
+    // SELL đang mở, chưa có BUY
+    if(sellPos > 0 && buyPos == 0)
     {
-        double newStop     = NormalizePrice(ask + InpTrailingDistance * point);
-        double currentStop = GetPendingPrice(ORDER_TYPE_BUY_STOP);
-        if(newStop < currentStop - InpMinModifyPoints * point)
+        double newStop = NormalizePrice(ask + InpTrailingDistance * g_pip);
+        if(buyPend == 0)
         {
-            ModifyPendingStop(ORDER_TYPE_BUY_STOP, newStop);
-            Log("Trail BuyStop → " + DoubleToString(newStop, _Digits));
+            // Tái tạo BUY STOP nếu bị xóa
+            if(TimeCurrent() - g_lastReplaceBuyTime >= 2)
+            {
+                g_trade.BuyStop(InpInitialLot, newStop, _Symbol, 0, 0,
+                                ORDER_TIME_GTC, 0, "TRAIL_BUY_STOP");
+                g_lastReplaceBuyTime = TimeCurrent();
+                Log("Re-place BuyStop @ " + DoubleToString(newStop, _Digits));
+            }
+        }
+        else
+        {
+            double currentStop = GetPendingPrice(ORDER_TYPE_BUY_STOP);
+            if(newStop < currentStop - InpMinModifyPoints * g_pip)
+            {
+                ModifyPendingStop(ORDER_TYPE_BUY_STOP, newStop);
+                Log("Trail BuyStop → " + DoubleToString(newStop, _Digits));
+            }
         }
     }
 }
@@ -329,6 +394,17 @@ void CloseAllOrders()
         Sleep(50);
     }
     DeleteAllPending();
+
+    // Reset toàn bộ tracking cho chu kỳ mới
+    g_lastDCATriggerBuy   = 0;
+    g_lastDCATriggerSell  = 0;
+    g_lastDCATimeBuy      = 0;
+    g_lastDCATimeSell     = 0;
+    g_lastDCALotBuy       = 0;
+    g_lastDCALotSell      = 0;
+    g_lastReplaceSellTime = 0;
+    g_lastReplaceBuyTime  = 0;
+
     Log("All orders closed.");
 }
 
@@ -546,6 +622,20 @@ double GetExtremePositionPrice(ENUM_POSITION_TYPE dir)
 double GetExtremeLot(ENUM_POSITION_TYPE dir)
 {
     double ep = GetExtremePositionPrice(dir);
+
+    // Nếu lệnh DCA async chưa visible (trigger xa hơn extreme đang thấy),
+    // dùng lot đã lưu để tính lot tiếp theo đúng chuỗi
+    if(dir == POSITION_TYPE_BUY && g_lastDCALotBuy > 0 && g_lastDCATriggerBuy > 0)
+    {
+        if(ep < 0 || g_lastDCATriggerBuy < ep)
+            return g_lastDCALotBuy;
+    }
+    if(dir == POSITION_TYPE_SELL && g_lastDCALotSell > 0 && g_lastDCATriggerSell > 0)
+    {
+        if(ep < 0 || g_lastDCATriggerSell > ep)
+            return g_lastDCALotSell;
+    }
+
     if(ep < 0) return InpInitialLot;
     for(int i = PositionsTotal() - 1; i >= 0; i--)
     {

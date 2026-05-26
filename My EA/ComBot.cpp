@@ -2,8 +2,11 @@
 #include <ChartObjects\ChartObjectsTxtControls.mqh>
 
 CTrade Trade;
-CChartObjectLabel lblDailyProfit, lblDailyPct, lblLocalTime, lblServerTime, lblStatus;
-CChartObjectLabel lblCondHours, lblCondDaily, lblCondPos;
+CChartObjectRectLabel panelBg, sep1, sep2, sep3;
+CChartObjectLabel lblTime,    lblStatus,  lblHours;
+CChartObjectLabel lblBalance, lblInitial, lblDayPnL,  lblFloat;
+CChartObjectLabel lblDDNow,   lblDDMax,   lblProfitDay;
+CChartObjectLabel lblBuyPnL,  lblBuyOrd,  lblSelPnL,  lblSelOrd, lblTotal;
 CChartObjectText  txtTimeCountDown;
 
 input group  "=== Cài đặt lệnh ==="
@@ -13,7 +16,6 @@ input int    MagicNumber     = 20250526;  // Magic number (phân biệt với EA
 
 input group  "=== Lợi nhuận & Rủi ro ==="
 input double TakeProfitUSD   = 1.5;       // Chốt lời chu kỳ (USD)
-input double MaxDrawdownUSD  = 50.0;      // Cắt lỗ tối đa chu kỳ (USD)
 input double DailyProfitPct  = 2.0;       // Mục tiêu lợi nhuận ngày - dừng bot (% số dư đầu ngày)
 input double DailyLossPct    = 20.0;      // Lỗ tối đa trong ngày - dừng bot (% số dư đầu ngày)
 input int    TrailTriggerPips = 30;        // Số pip lãi để kích hoạt trailing SL
@@ -25,8 +27,9 @@ input int    StartHour       = 8;         // Giờ bắt đầu giao dịch (gi�
 input int    EndHour         = 22;        // Giờ kết thúc giao dịch (giờ địa phương)
 
 input group  "=== Giao diện panel ==="
-input int    PanelRight      = 220;       // Khoảng cách từ mép phải màn hình (pixel)
+input int    PanelLeft       = 5;         // Khoảng cách từ mép trái màn hình (pixel)
 input int    PanelTop        = 25;        // Vị trí từ trên xuống (pixel)
+input int    PanelWidth      = 290;       // Chiều rộng panel (pixel)
 
 // Global variables
 datetime lastCandleTime    = 0;
@@ -42,6 +45,8 @@ double g_buyLots         = 0.0;
 double g_sellLots        = 0.0;
 double g_totalSwap       = 0.0;
 int    g_totalPos        = 0;
+int    g_buyCount        = 0;
+int    g_sellCount       = 0;
 double g_dailyClosedPnL  = 0.0; // Lợi nhuận đã đóng trong ngày (cache từ OnTimer)
 
 //+------------------------------------------------------------------+
@@ -55,17 +60,50 @@ int OnInit()
     g_currentDay      = iTime(_Symbol, PERIOD_D1, 0);
     g_dayStartBalance = AccountInfoDouble(ACCOUNT_BALANCE);
 
-    int x = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) - PanelRight;
+    int x = PanelLeft + 10;
     int y = PanelTop;
+    int sw = PanelWidth - 20;  // separator width
 
-    if (!CreateLable(lblDailyProfit, "DailyProfit", "Daily P&L : --",              x, y     )) return INIT_FAILED;
-    if (!CreateLable(lblDailyPct,    "DailyPct",   "Now --% / MaxLoss --% / Profit --%", x, y+ 22 )) return INIT_FAILED;
-    if (!CreateLable(lblLocalTime,   "LocalTime",   "Local  : --:--:--",           x, y+ 44 )) return INIT_FAILED;
-    if (!CreateLable(lblServerTime,  "ServerTime",  "Server : --:--:--",           x, y+ 66 )) return INIT_FAILED;
-    if (!CreateLable(lblStatus,      "BotStatus",   "Status : --",                 x, y+ 88 )) return INIT_FAILED;
-    if (!CreateLable(lblCondHours,   "CondHours",   "Hours  : --",                 x, y+115 )) return INIT_FAILED;
-    if (!CreateLable(lblCondDaily,   "CondDaily",   "Daily  : --",                 x, y+137 )) return INIT_FAILED;
-    if (!CreateLable(lblCondPos,     "CondPos",     "Pos    : --",                 x, y+159 )) return INIT_FAILED;
+    // --- Nền panel ---
+    if (!panelBg.Create(0, "cbPanelBg", 0, PanelLeft, y - 10, PanelWidth, 355)) return INIT_FAILED;
+    panelBg.BackColor(C'15,20,28');
+    panelBg.BorderType(BORDER_FLAT);
+    panelBg.Color(C'50,65,80');
+
+    // Nhóm 1: Thời gian & trạng thái
+    if (!CreateLable(lblTime,    "cbTime",    "Time  : --",             x, y     )) return INIT_FAILED;
+    if (!CreateLable(lblStatus,  "cbStatus",  "Status: --",             x, y+ 22 )) return INIT_FAILED;
+    if (!CreateLable(lblHours,   "cbHours",   "Hours : --",             x, y+ 44 )) return INIT_FAILED;
+
+    // Separator 1
+    if (!sep1.Create(0, "cbSep1", 0, PanelLeft+5, y+60, sw, 1)) return INIT_FAILED;
+    sep1.BackColor(C'50,65,80'); sep1.BorderType(BORDER_FLAT); sep1.Color(C'50,65,80');
+
+    // Nhóm 2: Tài khoản
+    if (!CreateLable(lblBalance, "cbBalance", "Balance: $--",           x, y+ 68 )) return INIT_FAILED;
+    if (!CreateLable(lblInitial, "cbInitial", "Initial: $--",           x, y+ 90 )) return INIT_FAILED;
+    if (!CreateLable(lblDayPnL,  "cbDayPnL",  "Day P/L: $--",          x, y+112 )) return INIT_FAILED;
+    if (!CreateLable(lblFloat,   "cbFloat",   "Float  : $--",           x, y+134 )) return INIT_FAILED;
+
+    // Separator 2
+    if (!sep2.Create(0, "cbSep2", 0, PanelLeft+5, y+152, sw, 1)) return INIT_FAILED;
+    sep2.BackColor(C'50,65,80'); sep2.BorderType(BORDER_FLAT); sep2.Color(C'50,65,80');
+
+    // Nhóm 3: DD & Profit
+    if (!CreateLable(lblDDNow,     "cbDDNow",     "DD Now    : --%",     x, y+160 )) return INIT_FAILED;
+    if (!CreateLable(lblDDMax,     "cbDDMax",     "DD Max    : --%",     x, y+182 )) return INIT_FAILED;
+    if (!CreateLable(lblProfitDay, "cbProfitDay", "Profit Day: $--",     x, y+204 )) return INIT_FAILED;
+
+    // Separator 3
+    if (!sep3.Create(0, "cbSep3", 0, PanelLeft+5, y+222, sw, 1)) return INIT_FAILED;
+    sep3.BackColor(C'50,65,80'); sep3.BorderType(BORDER_FLAT); sep3.Color(C'50,65,80');
+
+    // Nhóm 4: Buy / Sell
+    if (!CreateLable(lblBuyPnL,  "cbBuyPnL",  "Buy P/L: $--",            x, y+230 )) return INIT_FAILED;
+    if (!CreateLable(lblBuyOrd,  "cbBuyOrd",  "Buy Ord: 0    Lot: 0.00", x, y+252 )) return INIT_FAILED;
+    if (!CreateLable(lblSelPnL,  "cbSelPnL",  "Sel P/L: $--",            x, y+274 )) return INIT_FAILED;
+    if (!CreateLable(lblSelOrd,  "cbSelOrd",  "Sel Ord: 0    Lot: 0.00", x, y+296 )) return INIT_FAILED;
+    if (!CreateLable(lblTotal,   "cbTotal",   "Total  : 0 orders",        x, y+318 )) return INIT_FAILED;
 
     if (!CreateText(txtTimeCountDown, "TimeCountDown", "Countdown:  s"))    return INIT_FAILED;
 
@@ -100,69 +138,85 @@ void OnTimer()
     // --- Cập nhật lợi nhuận đã đóng trong ngày (cache mỗi giây) ---
     g_dailyClosedPnL = GetDailyClosedProfit();
 
-    // --- Daily P&L ---
-    double dailyTotal        = g_dailyClosedPnL + g_buyProfit + g_sellProfit + g_totalSwap;
-    double dailyProfitTarget = g_dayStartBalance * DailyProfitPct / 100.0;
-    double dailyPct          = (g_dayStartBalance > 0) ? dailyTotal / g_dayStartBalance * 100.0 : 0.0;
-    string pnlSign           = dailyTotal >= 0 ? "+" : "";
-    string pctSign           = dailyPct  >= 0 ? "+" : "";
-    lblDailyProfit.Description("Daily P&L : " + pnlSign + DoubleToString(dailyTotal, 2) + " USD");
-    lblDailyProfit.Color(dailyTotal >= 0 ? clrLimeGreen : clrTomato);
-    lblDailyPct.Description("Now " + pctSign + DoubleToString(dailyPct, 1)
-                            + "% / MaxLoss -" + DoubleToString(DailyLossPct, 1)
-                            + "% / Profit +" + DoubleToString(DailyProfitPct, 1) + "%");
-    lblDailyPct.Color(dailyTotal >= 0 ? clrLimeGreen : clrTomato);
+    double floatPnL   = g_buyProfit + g_sellProfit + g_totalSwap;
+    double dailyTotal = g_dailyClosedPnL + floatPnL;
 
-    // --- Giờ địa phương (theo UTC offset input) và giờ server ---
-    MqlDateTime localDt, serverDt;
-    TimeToStruct(TimeGMT() + LocalUTCOffset * 3600, localDt);
-    TimeToStruct(TimeCurrent(),                     serverDt);
-    lblLocalTime.Description(StringFormat("Local  : %02d:%02d:%02d  (UTC+%d)", localDt.hour, localDt.min, localDt.sec, LocalUTCOffset));
-    lblServerTime.Description(StringFormat("Server : %02d:%02d:%02d", serverDt.hour, serverDt.min, serverDt.sec));
+    // --- Time ---
+    MqlDateTime serverDt;
+    TimeToStruct(TimeCurrent(), serverDt);
+    lblTime.Description(StringFormat("Time  : %04d/%02d/%02d  %02d:%02d:%02d",
+                        serverDt.year, serverDt.mon, serverDt.day,
+                        serverDt.hour, serverDt.min, serverDt.sec));
 
-    // --- Trạng thái bot ---
+    // --- Status ---
     if (g_dailyTargetHit)
-    {
-        lblStatus.Description("Status: Đạt mục tiêu ngày");
-        lblStatus.Color(clrGold);
-    }
+    { lblStatus.Description("Status: Đạt mục tiêu ngày");  lblStatus.Color(clrGold); }
     else if (g_dailyLossHit)
-    {
-        lblStatus.Description("Status: Đạt lỗ tối đa ngày");
-        lblStatus.Color(clrTomato);
-    }
+    { lblStatus.Description("Status: Đạt lỗ tối đa ngày"); lblStatus.Color(clrTomato); }
     else if (!IsInTradingHours())
     {
-        lblStatus.Description("Status: Ngoài giờ giao dịch");
-        lblStatus.Color(clrSilver);
+        if (g_totalPos > 0)
+        { lblStatus.Description("Status: Ngoài giờ - xử lý " + IntegerToString(g_totalPos) + " lệnh"); lblStatus.Color(clrOrange); }
+        else
+        { lblStatus.Description("Status: Ngoài giờ giao dịch"); lblStatus.Color(clrSilver); }
     }
     else
-    {
-        lblStatus.Description("Status: Đang hoạt động");
-        lblStatus.Color(clrLimeGreen);
-    }
+    { lblStatus.Description("Status: Đang hoạt động"); lblStatus.Color(clrLimeGreen); }
 
-    // --- Điều kiện mở lệnh ---
-    bool condHours  = IsInTradingHours();
-    bool condDaily  = !g_dailyTargetHit && !g_dailyLossHit;
-    bool condMaxPos = (g_totalPos < MaxPositions);
-
-    if (condHours)
-    { lblCondHours.Description(StringFormat("Hours  : OK (%d:00 - %d:00)", StartHour, EndHour)); lblCondHours.Color(clrLimeGreen); }
+    // --- Hours ---
+    if (IsInTradingHours())
+    { lblHours.Description(StringFormat("Hours : %02d:00 - %02d:00  OK", StartHour, EndHour)); lblHours.Color(clrLimeGreen); }
     else
-    { lblCondHours.Description("Hours  : Ngoài khung giờ giao dịch");                            lblCondHours.Color(clrSilver); }
+    { lblHours.Description(StringFormat("Hours : %02d:00 - %02d:00  --", StartHour, EndHour)); lblHours.Color(clrSilver); }
 
-    if (condDaily)
-    { lblCondDaily.Description("Daily  : OK - Chưa đạt target");          lblCondDaily.Color(clrWhite); }
-    else if (g_dailyLossHit)
-    { lblCondDaily.Description("Daily  : Đạt lỗ tối đa - Bot dừng");     lblCondDaily.Color(clrTomato); }
-    else
-    { lblCondDaily.Description("Daily  : Đạt target - Bot dừng");         lblCondDaily.Color(clrGold); }
+    // --- Balance & Initial ---
+    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+    lblBalance.Description("Balance: $" + DoubleToString(balance, 2));
+    lblBalance.Color(clrWhite);
+    lblInitial.Description("Initial: $" + DoubleToString(g_dayStartBalance, 2));
+    lblInitial.Color(clrSilver);
 
-    if (condMaxPos)
-    { lblCondPos.Description("Pos    : " + IntegerToString(g_totalPos) + " / " + IntegerToString(MaxPositions)); lblCondPos.Color(clrWhite); }
-    else
-    { lblCondPos.Description("Pos    : Đã đủ max (" + IntegerToString(MaxPositions) + "/" + IntegerToString(MaxPositions) + ")"); lblCondPos.Color(clrOrange); }
+    // --- Day P/L (chỉ lệnh đã đóng) ---
+    string daySign = g_dailyClosedPnL >= 0 ? "+" : "";
+    lblDayPnL.Description("Day P/L: $" + daySign + DoubleToString(g_dailyClosedPnL, 2));
+    lblDayPnL.Color(g_dailyClosedPnL >= 0 ? clrLimeGreen : clrTomato);
+
+    // --- Float (lệnh đang mở) ---
+    double floatPct  = (g_dayStartBalance > 0) ? floatPnL / g_dayStartBalance * 100.0 : 0.0;
+    string floatSign = floatPnL >= 0 ? "+" : "";
+    lblFloat.Description(StringFormat("Float  : $%.2f  (%.2f%%)", floatPnL, floatPct));
+    lblFloat.Color(floatPnL >= 0 ? clrLimeGreen : clrTomato);
+
+    // --- DD Now / DD Max ---
+    double ddNow = (floatPnL < 0 && g_dayStartBalance > 0) ? MathAbs(floatPnL) / g_dayStartBalance * 100.0 : 0.0;
+    lblDDNow.Description(StringFormat("DD Now : %.2f%%", ddNow));
+    lblDDNow.Color(ddNow > 0 ? clrTomato : clrWhite);
+    lblDDMax.Description(StringFormat("DD Max : %.2f%%", DailyLossPct));
+    lblDDMax.Color(clrSilver);
+
+    // --- Profit Day (closed + open tổng ngày vs mục tiêu) ---
+    double profitTarget = g_dayStartBalance * DailyProfitPct / 100.0;
+    double dailyPct     = (g_dayStartBalance > 0) ? dailyTotal / g_dayStartBalance * 100.0 : 0.0;
+    string profitSign   = dailyTotal >= 0 ? "+" : "";
+    lblProfitDay.Description(StringFormat("Profit Day: $%.2f  (%s%.1f%% / +%.1f%%)",
+                             dailyTotal, profitSign, dailyPct, DailyProfitPct));
+    lblProfitDay.Color(dailyTotal >= 0 ? clrLimeGreen : clrTomato);
+
+    // --- Buy / Sel ---
+    string buyPnLSign = g_buyProfit >= 0 ? "+" : "";
+    lblBuyPnL.Description("Buy P/L: $" + buyPnLSign + DoubleToString(g_buyProfit, 2));
+    lblBuyPnL.Color(g_buyProfit >= 0 ? clrLimeGreen : clrTomato);
+    lblBuyOrd.Description(StringFormat("Buy Ord: %d    Lot: %.2f", g_buyCount, g_buyLots));
+    lblBuyOrd.Color(clrWhite);
+
+    string selPnLSign = g_sellProfit >= 0 ? "+" : "";
+    lblSelPnL.Description("Sel P/L: $" + selPnLSign + DoubleToString(g_sellProfit, 2));
+    lblSelPnL.Color(g_sellProfit >= 0 ? clrLimeGreen : clrTomato);
+    lblSelOrd.Description(StringFormat("Sel Ord: %d    Lot: %.2f", g_sellCount, g_sellLots));
+    lblSelOrd.Color(clrWhite);
+
+    lblTotal.Description("Total  : " + IntegerToString(g_totalPos) + " / " + IntegerToString(MaxPositions) + " orders");
+    lblTotal.Color(g_totalPos >= MaxPositions ? clrOrange : clrWhite);
 
     // --- Countdown đến nến tiếp theo ---
     datetime currentTime    = TimeCurrent();
@@ -197,8 +251,8 @@ void OnTick()
         return;
     }
 
-    // --- Kiểm tra TP/SL chu kỳ ---
-    if (totalNetProfit >= TakeProfitUSD || totalNetProfit <= -MaxDrawdownUSD)
+    // --- Kiểm tra TP chu kỳ ---
+    if (totalNetProfit >= TakeProfitUSD)
     {
         CloseAllPositions();
         return;
@@ -248,6 +302,8 @@ void CalculatePositionStats()
     g_sellLots   = 0;
     g_totalSwap  = 0;
     g_totalPos   = 0;
+    g_buyCount   = 0;
+    g_sellCount  = 0;
 
     for (int i = PositionsTotal() - 1; i >= 0; i--)
     {
@@ -271,11 +327,13 @@ void CalculatePositionStats()
         {
             g_buyProfit += profit;
             g_buyLots   += vol;
+            g_buyCount++;
         }
         else
         {
             g_sellProfit += profit;
             g_sellLots   += vol;
+            g_sellCount++;
         }
 
         if (vol > LotSize)
@@ -360,6 +418,8 @@ void TradeCom()
 void HedgePositions()
 {
     if (g_totalPos == 0)
+        return;
+    if (g_dailyTargetHit || g_dailyLossHit)
         return;
 
     double totalProfit = g_buyProfit + g_sellProfit + g_totalSwap;

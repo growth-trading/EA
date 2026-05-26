@@ -1,7 +1,6 @@
 //+------------------------------------------------------------------+
 //|                                             DCA_Basket_EA.mq5    |
 //|              DCA Basket 2 chiều - XAUUSD                         |
-//|              Phân tích từ ảnh thực tế ngày 2026-05-19            |
 //+------------------------------------------------------------------+
 #property copyright "LongHD"
 #property version   "1.13"
@@ -11,10 +10,6 @@
 #include <Trade\OrderInfo.mqh>
 #include <Trade\PositionInfo.mqh>
 
-//+------------------------------------------------------------------+
-//| INPUTS                                                           |
-//+------------------------------------------------------------------+
-
 input group "========== 01. SEMI-AUTO MANUAL MODE =========="
 input bool   InpSemiAutoEnabled  = false;     // Bật chế độ bán tự động (lệnh tay)
 input int    InpSemiAutoTP       = 200;       // TP mỗi lệnh tính từ giá vào (pip), 0 = không đặt
@@ -23,134 +18,123 @@ input double InpSemiAutoTotalTP  = 0.0;       // Tổng lãi tự đóng hết l
 input double InpSemiAutoTotalSL  = 0.0;       // Tổng lỗ tự đóng hết lệnh ($), 0 = tắt
 
 input group "========== 02. MARKET FILTER - ATR/ADX =========="
-input bool             InpFilterEnabled  = true;          // Bật bộ lọc ATR/ADX trước khi vào lệnh
-input ENUM_TIMEFRAMES  InpFilterTF       = PERIOD_M5;     // Khung thời gian ATR/ADX
-input int    InpATRPeriod      = 5;        // Chu kỳ ATR
-input double InpATRMax         = 6.0;      // Chỉ vào lệnh khi ATR < giá trị này
-input int    InpADXPeriod      = 5;        // Chu kỳ ADX
-input double InpADXMax         = 20.0;     // Chỉ vào lệnh khi ADX < giá trị này
+input bool             InpFilterEnabled  = true;      // Bật bộ lọc ATR/ADX trước khi vào lệnh
+input ENUM_TIMEFRAMES  InpFilterTF       = PERIOD_M5; // Khung thời gian ATR/ADX
+input int    InpATRPeriod      = 5;     // Chu kỳ ATR
+input double InpATRMax         = 6.0;   // Chỉ vào lệnh khi ATR < giá trị này
+input int    InpADXPeriod      = 5;     // Chu kỳ ADX
+input double InpADXMax         = 20.0;  // Chỉ vào lệnh khi ADX < giá trị này
 
 input group "========== 03. CORE =========="
-input bool    InpManualTrigger    = false;     // Chờ lệnh tay để kích hoạt, đóng khi lệnh tay đóng hết
-input double  InpInitialLot       = 0.01;      // Lot ban đầu
-input int     InpInitialDistance  = 100;       // Khoảng cách pending ban đầu
-input int     InpTrailingDistance = 300;       // Khoảng cách trailing pending ngược chiều
-input double  InpTotalProfitTP    = 5.0;       // Tổng lợi nhuận tiền để đóng tất cả lệnh
-input int     InpMaxSpread        = 0;         // Spread tối đa, 0 = không lọc
-input int     InpSlippage         = 30;        // Slippage/deviation
+input bool    InpManualTrigger    = false;  // Chờ lệnh tay để kích hoạt, đóng khi lệnh tay đóng hết
+input double  InpInitialLot       = 0.01;   // Lot ban đầu
+input int     InpInitialDistance  = 100;    // Khoảng cách pending ban đầu
+input int     InpTrailingDistance = 300;    // Khoảng cách trailing pending ngược chiều
+input double  InpTotalProfitTP    = 5.0;    // Tổng lợi nhuận tiền để đóng tất cả lệnh
+input int     InpMaxSpread        = 0;      // Spread tối đa, 0 = không lọc
+input int     InpSlippage         = 30;     // Slippage/deviation
 
 input group "========== 04. DCA ÂM - HỆ SỐ CỘNG =========="
-input int     InpDCAMinDistance   = 100;       // Khoảng cách DCA âm tối thiểu so với lệnh gần nhất
-input double  InpDCALotAdd        = 0.01;      // Lot cộng thêm từ lệnh cùng chiều gần nhất
-input int     InpMaxOrdersPerSide = 20;        // Số lệnh tối đa mỗi phía Buy/Sell
-input int     InpMinRestDCA       = 1;         // Nghỉ tối thiểu giữa 2 lệnh DCA cùng phía (giây)
+input int     InpDCAMinDistance   = 100;  // Khoảng cách DCA âm tối thiểu so với lệnh gần nhất
+input double  InpDCALotAdd        = 0.01; // Lot cộng thêm từ lệnh cùng chiều gần nhất
+input int     InpMaxOrdersPerSide = 20;   // Số lệnh tối đa mỗi phía Buy/Sell
+input int     InpMinRestDCA       = 1;    // Nghỉ tối thiểu giữa 2 lệnh DCA cùng phía (giây)
 
 input group "========== 04B. DCA MULTIPLIER KHI ÂM TÀI KHOẢN =========="
-input bool    InpDCAMultEnabled   = true;      // Bật hệ số nhân khi âm % tài khoản
-input double  InpDCAMultTriggerPct= 5.0;       // Âm bao nhiêu % balance thì chuyển sang hệ số nhân
-input double  InpDCAMultFactor    = 1.5;       // Hệ số nhân lot DCA khi kích hoạt
-input double  InpDCAMaxLot        = 0.0;       // Giới hạn lot DCA tối đa
+input bool    InpDCAMultEnabled    = true; // Bật hệ số nhân khi âm % tài khoản
+input double  InpDCAMultTriggerPct = 5.0;  // Âm bao nhiêu % balance thì chuyển sang hệ số nhân
+input double  InpDCAMultFactor     = 1.5;  // Hệ số nhân lot DCA khi kích hoạt
+input double  InpDCAMaxLot         = 0.0;  // Giới hạn lot DCA tối đa
 
 input group "========== 05. OPTIONAL PROTECTION =========="
-input double  InpPendingTP        = 0;         // TP riêng cho pending, 0 = tắt
-input int     InpMinModifyPoints  = 1;         // Buộc tối thiểu để modify pending (điểm)
+input double  InpPendingTP       = 0;  // TP riêng cho pending, 0 = tắt
+input int     InpMinModifyPoints = 1;  // Buộc tối thiểu để modify pending (điểm)
 
 input group "========== 06. FAST BASKET CLOSE =========="
-input int     InpFastCloseLoops   = 8;         // Số vòng quét đóng nhanh khi đạt tổng tiền
-input bool    InpAsyncClose       = true;      // true = gửi lệnh đóng async nhanh hơn
-input int     InpTimerMS          = 250;       // Timer tiếp tục quét khi không có tick, 100-1000ms
-input int     InpWaitNewCycleSec  = 5;         // Đợi x giây trước khi tạo chu kỳ pending mới
+input int     InpFastCloseLoops  = 8;    // Số vòng quét đóng nhanh khi đạt tổng tiền
+input bool    InpAsyncClose      = true; // true = gửi lệnh đóng async nhanh hơn
+input int     InpTimerMS         = 250;  // Timer tiếp tục quét khi không có tick, 100-1000ms
+input int     InpWaitNewCycleSec = 5;    // Đợi x giây trước khi tạo chu kỳ pending mới
 
 input group "========== 07. RED NEWS PAUSE - MT5 CALENDAR =========="
-input bool    InpNewsPauseEnabled = true;      // Tạm dừng EA khi sắp có tin tức
-input int     InpNewsPauseBefore  = 30;        // Dừng trước tin x phút
-input int     InpNewsResumeAfter  = 30;        // Mở lại sau tin x phút
-input bool    InpNewsFilterA      = true;      // Lọc tin độ phiên Á
+input bool    InpNewsPauseEnabled = true;             // Tạm dừng EA khi sắp có tin tức
+input int     InpNewsPauseBefore  = 30;               // Dừng trước tin x phút
+input int     InpNewsResumeAfter  = 30;               // Mở lại sau tin x phút
+input bool    InpNewsFilterA      = true;             // Lọc tin độ phiên Á
 input string  InpNewsCurrA        = "JPY,CNY,AUD,NZD"; // Tiền tệ phiên Á
-input bool    InpNewsFilterAu     = true;      // Lọc tin độ phiên Âu
-input string  InpNewsCurrAu       = "EUR,GBP,CHF";     // Tiền tệ phiên Âu
-input bool    InpNewsFilterMy     = true;      // Lọc tin độ phiên Mỹ
-input string  InpNewsCurrMy       = "USD,CAD";          // Tiền tệ phiên Mỹ
-input int     InpNewsScanHours    = 24;        // Khoảng quét lịch tin sắp tới (giờ)
-input int     InpNewsUpdateSec    = 60;        // Tần suất cập nhật lịch tin (giây)
-input bool    InpDeletePendingNews= true;      // Xóa pending khi đang trong vùng tin
+input bool    InpNewsFilterAu     = true;             // Lọc tin độ phiên Âu
+input string  InpNewsCurrAu       = "EUR,GBP,CHF";   // Tiền tệ phiên Âu
+input bool    InpNewsFilterMy     = true;             // Lọc tin độ phiên Mỹ
+input string  InpNewsCurrMy       = "USD,CAD";        // Tiền tệ phiên Mỹ
+input int     InpNewsScanHours    = 24;               // Khoảng quét lịch tin sắp tới (giờ)
+input int     InpNewsUpdateSec    = 60;               // Tần suất cập nhật lịch tin (giây)
+input bool    InpDeletePendingNews= true;             // Xóa pending khi đang trong vùng tin
 
 input group "========== 08. CAPITAL GUARD - LÃI/LỖ THEO VỐN KHỞI CHẠY =========="
-input bool    InpCapGuardProfit   = true;      // Dừng EA khi lãi x% vốn khởi chạy
-input double  InpCapGuardProfitPct= 5.0;       // Lãi x% thì đóng sạch và tạm dừng
-input bool    InpCapGuardLoss     = true;      // Dừng EA khi âm trạng thái x% vốn
-input double  InpCapGuardLossPct  = 10.0;      // Âm x% vốn thì đóng sạch và tạm dừng
-input int     InpCapGuardRestMin  = 60;        // Nghỉ bao nhiêu phút rồi tự vào lại (0 = không tự vào)
-input bool    InpManageAllMagic0  = true;      // Quản lý cả lệnh tay magic 0 trên cùng symbol
+input bool    InpCapGuardProfit   = true;  // Dừng EA khi lãi x% vốn khởi chạy
+input double  InpCapGuardProfitPct= 5.0;   // Lãi x% thì đóng sạch và tạm dừng
+input bool    InpCapGuardLoss     = true;  // Dừng EA khi âm trạng thái x% vốn
+input double  InpCapGuardLossPct  = 10.0;  // Âm x% vốn thì đóng sạch và tạm dừng
+input int     InpCapGuardRestMin  = 60;    // Nghỉ bao nhiêu phút rồi tự vào lại (0 = không tự vào)
+input bool    InpManageAllMagic0  = true;  // Quản lý cả lệnh tay magic 0 trên cùng symbol
 
 input group "========== 09. WEEKEND CLOSE =========="
-input bool    InpWeekendClose     = true;      // Đóng tất cả lệnh cuối tuần (thứ 6)
-input int     InpWeekendCloseHour = 21;        // Giờ đóng thứ 6 (server time)
-input int     InpWeekendCloseMin  = 0;         // Phút đóng thứ 6
+input bool    InpWeekendClose     = true; // Đóng tất cả lệnh cuối tuần (thứ 6)
+input int     InpWeekendCloseHour = 21;   // Giờ đóng thứ 6 (server time)
+input int     InpWeekendCloseMin  = 0;    // Phút đóng thứ 6
 
 input group "========== 10. PANEL HIỂN THỊ =========="
-input int     InpPanelX          = 5;          // Vị trí X panel (pixel từ trái)
-input int     InpPanelY          = 48;         // Vị trí Y panel (pixel từ trên)
-input int     InpPanelW          = 350;        // Chiều rộng panel
-input int     InpFontSize        = 9;          // Cỡ chữ
-input int     InpLineSpacing     = 16;         // Khoảng cách dòng (pixel)
-input int     InpPanel1H         = 340;          // Chiều cao panel 1 (0 = tự tính)
-input int     InpPanel2H         = 150;          // Chiều cao panel 2 (0 = tự tính)
-input int     InpPanelGap        = 5;          // Khoảng cách giữa 2 panel (pixel)
+input int     InpPanelX     = 5;    // Vị trí X panel (pixel từ trái)
+input int     InpPanelY     = 48;   // Vị trí Y panel (pixel từ trên)
+input int     InpPanelW     = 350;  // Chiều rộng panel
+input int     InpFontSize   = 9;    // Cỡ chữ
+input int     InpLineSpacing= 16;   // Khoảng cách dòng (pixel)
+input int     InpPanel1H    = 340;  // Chiều cao panel 1 (0 = tự tính)
+input int     InpPanel2H    = 150;  // Chiều cao panel 2 (0 = tự tính)
+input int     InpPanelGap   = 5;    // Khoảng cách giữa 2 panel (pixel)
 
-//+------------------------------------------------------------------+
-//| OBJECTS & STATE                                                  |
-//+------------------------------------------------------------------+
 CTrade        g_trade;
 CPositionInfo g_pos;
 COrderInfo    g_ord;
 
 #define MAGIC_NUMBER 26051501
 
-//--- Trading state
-double   g_startCapital         = 0;
-bool     g_capGuardActive       = false;
-bool     g_guardSeenOrder       = false;
-datetime g_capGuardResumeAt     = 0;      // Thời điểm tự resume sau khi nghỉ
-bool     g_weekendClosed        = false;
-double   g_dayStartEquity       = 0;
-int      g_lastDay              = -1;
-datetime g_lastDCATimeBuy       = 0;
-datetime g_lastDCATimeSell      = 0;
-datetime g_nextCycleAllowAt     = 0;
-double   g_lastDCATriggerBuy    = 0;  // Giá trigger DCA buy gần nhất
-double   g_lastDCATriggerSell   = 0;  // Giá trigger DCA sell gần nhất
-double   g_lastDCALotBuy        = 0;  // Lot DCA buy gần nhất (fallback khi async chưa visible)
-double   g_lastDCALotSell       = 0;  // Lot DCA sell gần nhất
-datetime g_lastReplaceSellTime  = 0;  // Guard tái tạo SELL STOP sau news
-datetime g_lastReplaceBuyTime   = 0;  // Guard tái tạo BUY STOP sau news
-double   g_pip                  = 0;  // Pip chuẩn hóa: tự động theo digits broker
-bool     g_manualTriggerActive  = false; // Manual trigger: đang có lệnh tay hay không
-bool     g_darkMode             = true;  // Theme: true = dark, false = light
+double   g_startCapital        = 0;
+bool     g_capGuardActive      = false;
+bool     g_guardSeenOrder      = false;
+datetime g_capGuardResumeAt    = 0;
+bool     g_weekendClosed       = false;
+double   g_dayStartEquity      = 0;
+int      g_lastDay             = -1;
+datetime g_lastDCATimeBuy      = 0;
+datetime g_lastDCATimeSell     = 0;
+datetime g_nextCycleAllowAt    = 0;
+double   g_lastDCATriggerBuy   = 0;
+double   g_lastDCATriggerSell  = 0;
+double   g_lastDCALotBuy       = 0;
+double   g_lastDCALotSell      = 0;
+datetime g_lastReplaceSellTime = 0;
+datetime g_lastReplaceBuyTime  = 0;
+double   g_pip                 = 0;
+bool     g_manualTriggerActive = false;
+bool     g_darkMode            = true;
 
-//--- Indicator handles (Market Filter)
-int      g_atrHandle            = INVALID_HANDLE;
-int      g_adxHandle            = INVALID_HANDLE;
-double   g_lastATR              = 0;
-double   g_lastADX              = 0;
+int      g_atrHandle = INVALID_HANDLE;
+int      g_adxHandle = INVALID_HANDLE;
+double   g_lastATR   = 0;
+double   g_lastADX   = 0;
 
-//--- GUI
 const string GUI        = "DCA_";
-bool         g_semiAutoMode = false;  // Runtime toggle, khởi tạo từ InpSemiAutoEnabled
+bool         g_semiAutoMode = false;
 
-//--- Lot constants (cached in OnInit)
-double   g_lotStep              = 0.01;
-double   g_lotMin               = 0.01;
-double   g_lotMax               = 100.0;
+double   g_lotStep = 0.01;
+double   g_lotMin  = 0.01;
+double   g_lotMax  = 100.0;
 
-//--- News cache
 struct NewsItem { datetime time; string currency; };
 NewsItem  g_newsCache[];
-datetime  g_lastNewsUpdate    = 0;
+datetime  g_lastNewsUpdate = 0;
 
-//+------------------------------------------------------------------+
-//| INIT / DEINIT                                                    |
-//+------------------------------------------------------------------+
 int OnInit()
 {
     g_trade.SetExpertMagicNumber(MAGIC_NUMBER);
@@ -158,13 +142,11 @@ int OnInit()
     g_trade.SetAsyncMode(InpAsyncClose);
     g_trade.SetTypeFilling(ORDER_FILLING_RETURN);
 
-    // Chuẩn hóa pip: digits 3 hoặc 5 → broker dùng thêm 1 chữ số thập phân
-    // → 1 pip = 10 points. Ngược lại (2, 4 digits) → 1 pip = 1 point.
     int digits = (int)SymbolInfoInteger(_Symbol, SYMBOL_DIGITS);
     g_pip = _Point * ((digits == 3 || digits == 5) ? 10.0 : 1.0);
 
-    g_startCapital  = AccountInfoDouble(ACCOUNT_BALANCE);
-    g_semiAutoMode  = InpSemiAutoEnabled;
+    g_startCapital = AccountInfoDouble(ACCOUNT_BALANCE);
+    g_semiAutoMode = InpSemiAutoEnabled;
 
     g_lotStep = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_STEP);
     g_lotMin  = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
@@ -194,7 +176,6 @@ void OnDeinit(const int reason)
     ObjectsDeleteAll(0, GUI);
 }
 
-//+------------------------------------------------------------------+
 void OnTick()  { RunEA(); UpdateGUI(); }
 void OnTimer() { RunEA(); UpdateGUI(); }
 
@@ -208,18 +189,11 @@ void OnChartEvent(const int id, const long& lp, const double& dp, const string& 
     UpdateGUI();
 }
 
-//+------------------------------------------------------------------+
-//| HÀM CHÍNH                                                        |
-//+------------------------------------------------------------------+
 void RunEA()
 {
-    // --- Capital Guard ---
     if(CheckCapitalGuard()) return;
-
-    // --- Đóng cuối tuần ---
     if(CheckWeekendClose()) return;
 
-    // --- Manual Trigger: dừng bot khi lệnh tay đóng hết ---
     if(InpManualTrigger)
     {
         int magic0Pos = CountMagic0Positions();
@@ -238,8 +212,6 @@ void RunEA()
     int sellPend = CountPending(ORDER_TYPE_SELL_STOP);
     int totalPos = buyPos + sellPos;
 
-    // ── Basket close: chạy TRƯỚC mọi guard (spread / cooldown / news) ──
-    // Đóng lệnh không nên bị chặn bởi spread cao hay cooldown mở lệnh mới.
     if(totalPos > 0)
     {
         double totalProfit = GetTotalProfit();
@@ -260,7 +232,6 @@ void RunEA()
         }
     }
 
-    // ── Guard mở lệnh mới: cooldown / spread / news ──
     if(TimeCurrent() < g_nextCycleAllowAt) return;
     if(!CheckSpread()) return;
 
@@ -276,36 +247,31 @@ void RunEA()
 
     bool marketOk = CheckMarketFilter();
 
-    // Không có gì → bắt đầu chu kỳ mới
     if(totalPos == 0 && buyPend == 0 && sellPend == 0)
     {
         if(!g_semiAutoMode && !InpManualTrigger && marketOk) PlaceInitialPending();
         return;
     }
 
-    // Có vị thế
     if(totalPos > 0)
     {
         if(g_semiAutoMode)
         {
             ManageSemiAutoPositions();
-            return;  // Semi-auto: chỉ quản lý TP/SL, không DCA không trailing
+            return;
         }
 
-        // DCA không cần market filter — DCA là phòng thủ, không phải tín hiệu vào lệnh mới
         if(buyPos > 0 && buyPos < InpMaxOrdersPerSide)
             ManageDCA(POSITION_TYPE_BUY);
 
         if(sellPos > 0 && sellPos < InpMaxOrdersPerSide)
             ManageDCA(POSITION_TYPE_SELL);
 
+        ManageAutoBasketTP();
         TrailOppositePending(buyPos, sellPos, buyPend, sellPend);
     }
 }
 
-//+------------------------------------------------------------------+
-//| Kiểm tra bộ lọc ATR/ADX M5                                       |
-//+------------------------------------------------------------------+
 bool CheckMarketFilter()
 {
     if(!InpFilterEnabled) return true;
@@ -325,16 +291,11 @@ bool CheckMarketFilter()
     return true;
 }
 
-//+------------------------------------------------------------------+
-//| Semi-auto: set TP/SL theo entry cho tất cả lệnh đang quản lý    |
-//+------------------------------------------------------------------+
 void ManageSemiAutoPositions()
 {
     double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
     double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
 
-    // Tính TP/SL basket: mức giá mà khi tất cả lệnh đóng tại đó → tổng lãi/lỗ = target
-    // Công thức: level = weighted_avg_open ± (target × tickSize / (total_lot × tickValue))
     double tpBuyLevel = 0, tpSellLevel = 0;
     double slBuyLevel = 0, slSellLevel = 0;
 
@@ -352,10 +313,8 @@ void ManageSemiAutoPositions()
                 { sellWtd += op * vol; sellLot += vol; }
         }
 
-        // Broker-side basket TP/SL chỉ áp dụng khi thuần 1 chiều.
-        // Khi có cả BUY lẫn SELL: BUY cần giá tăng, SELL cần giá giảm — hai hướng ngược nhau,
-        // không thể đồng thời chạm TP. Software monitoring trong RunEA xử lý tổng lợi nhuận
-        // BUY+SELL kết hợp và buộc đóng toàn bộ khi đạt InpSemiAutoTotalTP.
+        // Mixed BUY+SELL: broker TP 2 chiều ngược hướng giá, không thể cùng hit.
+        // Software monitoring trong RunEA xử lý tổng hợp.
         bool hasMixed = (buyLot > 0 && sellLot > 0);
 
         if(!hasMixed && buyLot > 0)
@@ -384,43 +343,40 @@ void ManageSemiAutoPositions()
         bool   isBuy = (g_pos.PositionType() == POSITION_TYPE_BUY);
         double open  = g_pos.PriceOpen();
 
-        // TP: tính cả 2, lấy bên nào gần giá hơn (hit trước)
         double tpInd = (InpSemiAutoTP > 0)
                        ? NormalizePrice(isBuy ? open + InpSemiAutoTP * g_pip
                                               : open - InpSemiAutoTP * g_pip)
                        : 0;
         double tpBsk = isBuy ? tpBuyLevel : tpSellLevel;
-
         double tp;
         if(tpInd > 0 && tpBsk > 0)
-            tp = isBuy ? MathMin(tpInd, tpBsk)   // BUY: thấp hơn = gần hơn
-                       : MathMax(tpInd, tpBsk);  // SELL: cao hơn = gần hơn
+            tp = isBuy ? MathMin(tpInd, tpBsk)  // BUY: thấp hơn = gần hơn
+                       : MathMax(tpInd, tpBsk); // SELL: cao hơn = gần hơn
         else if(tpBsk > 0) tp = tpBsk;
         else                tp = tpInd;
 
-        // SL: tính cả 2, lấy bên nào gần giá hơn (trigger trước)
         double slInd = (InpSemiAutoSL > 0)
                        ? NormalizePrice(isBuy ? open - InpSemiAutoSL * g_pip
                                               : open + InpSemiAutoSL * g_pip)
                        : 0;
         double slBsk = isBuy ? slBuyLevel : slSellLevel;
-
         double sl;
         if(slInd > 0 && slBsk > 0)
-            sl = isBuy ? MathMax(slInd, slBsk)   // BUY: cao hơn = gần hơn
-                       : MathMin(slInd, slBsk);  // SELL: thấp hơn = gần hơn
+            sl = isBuy ? MathMax(slInd, slBsk)  // BUY: cao hơn = gần hơn
+                       : MathMin(slInd, slBsk); // SELL: thấp hơn = gần hơn
         else if(slBsk > 0) sl = slBsk;
         else                sl = slInd;
 
-        if(MathAbs(g_pos.TakeProfit() - tp) > _Point * 0.5 ||
-           MathAbs(g_pos.StopLoss()   - sl) > _Point * 0.5)
-            g_trade.PositionModify(g_pos.Ticket(), sl, tp);
+        // Nếu không tính được giá trị mới thì giữ nguyên giá trị cũ, tránh xóa TP/SL đã đặt
+        double finalTP = (tp > 0) ? tp : g_pos.TakeProfit();
+        double finalSL = (sl > 0) ? sl : g_pos.StopLoss();
+
+        if(MathAbs(g_pos.TakeProfit() - finalTP) > _Point * 0.5 ||
+           MathAbs(g_pos.StopLoss()   - finalSL) > _Point * 0.5)
+            g_trade.PositionModify(g_pos.Ticket(), finalSL, finalTP);
     }
 }
 
-//+------------------------------------------------------------------+
-//| Đặt 2 lệnh pending ban đầu                                       |
-//+------------------------------------------------------------------+
 void PlaceInitialPending()
 {
     double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
@@ -441,41 +397,36 @@ void PlaceInitialPending()
     bool ok2 = g_trade.SellStop(InpInitialLot, sellPrice, _Symbol, 0, tpSell,
                                  ORDER_TIME_GTC, 0, "INIT_SELL_STOP");
 
-    // Khoá 2 giây sau khi gửi lệnh async — tránh đặt trùng khi OrdersTotal() chưa cập nhật
     if(ok1 || ok2)
         g_nextCycleAllowAt = TimeCurrent() + 2;
 }
 
-//+------------------------------------------------------------------+
-//| DCA khi lệnh thua lỗ                                             |
-//+------------------------------------------------------------------+
 void ManageDCA(ENUM_POSITION_TYPE dir)
 {
     double bid     = SymbolInfoDouble(_Symbol, SYMBOL_BID);
     double ask     = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
     double dcaDist = InpDCAMinDistance * g_pip;
 
-    // Kiểm tra thời gian nghỉ tối thiểu
+    // BUY thực thi tại ASK, SELL tại BID — đo khoảng cách theo giá thực thi để bước đều
+    double refPrice = (dir == POSITION_TYPE_BUY) ? ask : bid;
+
     datetime lastDCA = (dir == POSITION_TYPE_BUY) ? g_lastDCATimeBuy : g_lastDCATimeSell;
     if(TimeCurrent() - lastDCA < InpMinRestDCA) return;
 
-    // Kiểm tra khoảng cách từ trigger DCA gần nhất (tránh vào liên tục khi async)
     double lastTrigger = (dir == POSITION_TYPE_BUY) ? g_lastDCATriggerBuy : g_lastDCATriggerSell;
     if(lastTrigger > 0)
     {
-        if(dir == POSITION_TYPE_BUY  && bid > lastTrigger - dcaDist) return;
-        if(dir == POSITION_TYPE_SELL && ask < lastTrigger + dcaDist) return;
+        if(dir == POSITION_TYPE_BUY  && refPrice > lastTrigger - dcaDist) return;
+        if(dir == POSITION_TYPE_SELL && refPrice < lastTrigger + dcaDist) return;
     }
     else
     {
-        // Lần DCA đầu tiên: so với giá vào lệnh gốc
         double extremePrice = GetExtremePositionPrice(dir);
         if(extremePrice <= 0) return;
-        if(dir == POSITION_TYPE_BUY  && bid > extremePrice - dcaDist) return;
-        if(dir == POSITION_TYPE_SELL && ask < extremePrice + dcaDist) return;
+        if(dir == POSITION_TYPE_BUY  && refPrice > extremePrice - dcaDist) return;
+        if(dir == POSITION_TYPE_SELL && refPrice < extremePrice + dcaDist) return;
     }
 
-    // Tính lot mới
     double lastLot = GetExtremeLot(dir);
     double mult    = GetDCAMultiplier();
     double newLot  = NormalizeLot(lastLot + InpDCALotAdd * mult);
@@ -487,39 +438,76 @@ void ManageDCA(ENUM_POSITION_TYPE dir)
                                          : g_trade.Sell(newLot, _Symbol, 0, 0, 0, comment);
     if(ok)
     {
-        // Lưu giá trigger ngay lập tức — không chờ position fill vào danh sách
         if(dir == POSITION_TYPE_BUY)
         {
-            g_lastDCATriggerBuy = bid;
+            g_lastDCATriggerBuy = ask;
             g_lastDCATimeBuy    = TimeCurrent();
             g_lastDCALotBuy     = newLot;
         }
         else
         {
-            g_lastDCATriggerSell = ask;
+            g_lastDCATriggerSell = bid;
             g_lastDCATimeSell    = TimeCurrent();
             g_lastDCALotSell     = newLot;
         }
     }
 }
 
-//+------------------------------------------------------------------+
-//| Trail pending ngược chiều                                         |
-//+------------------------------------------------------------------+
+void ManageAutoBasketTP()
+{
+    double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
+    double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
+    if(tickValue <= 0 || tickSize <= 0) return;
+
+    double buyWtd = 0, buyLot = 0, sellWtd = 0, sellLot = 0;
+    for(int i = PositionsTotal() - 1; i >= 0; i--)
+    {
+        if(!g_pos.SelectByIndex(i)) continue;
+        if(!IsOurOrder(g_pos.Magic(), g_pos.Symbol())) continue;
+        double vol = g_pos.Volume(), op = g_pos.PriceOpen();
+        if(g_pos.PositionType() == POSITION_TYPE_BUY)
+            { buyWtd += op * vol; buyLot += vol; }
+        else
+            { sellWtd += op * vol; sellLot += vol; }
+    }
+
+    double tpBuyLevel = 0, tpSellLevel = 0;
+    if(buyLot > 0)
+    {
+        double dist = InpTotalProfitTP * tickSize / (buyLot * tickValue);
+        tpBuyLevel  = NormalizePrice(buyWtd / buyLot + dist);
+    }
+    if(sellLot > 0)
+    {
+        double dist = InpTotalProfitTP * tickSize / (sellLot * tickValue);
+        tpSellLevel = NormalizePrice(sellWtd / sellLot - dist);
+    }
+
+    for(int i = PositionsTotal() - 1; i >= 0; i--)
+    {
+        if(!g_pos.SelectByIndex(i)) continue;
+        if(!IsOurOrder(g_pos.Magic(), g_pos.Symbol())) continue;
+
+        bool   isBuy = (g_pos.PositionType() == POSITION_TYPE_BUY);
+        double tp    = isBuy ? tpBuyLevel : tpSellLevel;
+        double sl    = g_pos.StopLoss();
+
+        if(tp > 0 && MathAbs(g_pos.TakeProfit() - tp) > _Point * 0.5)
+            g_trade.PositionModify(g_pos.Ticket(), sl, tp);
+    }
+}
+
 void TrailOppositePending(int buyPos, int sellPos, int buyPend, int sellPend)
 {
     double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
     double bid = SymbolInfoDouble(_Symbol, SYMBOL_BID);
 
-
-    // Tính khoảng cách giá để lãi đúng InpTotalProfitTP USD với InpInitialLot
     double tickSize  = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_SIZE);
     double tickValue = SymbolInfoDouble(_Symbol, SYMBOL_TRADE_TICK_VALUE);
     double tpDist    = (tickValue > 0 && InpInitialLot > 0)
                        ? NormalizePrice(InpTotalProfitTP * tickSize / (tickValue * InpInitialLot))
                        : 0;
 
-    // BUY đang mở, chưa có SELL
     if(buyPos > 0 && sellPos == 0)
     {
         double newStop = NormalizePrice(bid - InpTrailingDistance * g_pip);
@@ -537,13 +525,10 @@ void TrailOppositePending(int buyPos, int sellPos, int buyPend, int sellPend)
         {
             double currentStop = GetPendingPrice(ORDER_TYPE_SELL_STOP);
             if(newStop > currentStop + InpMinModifyPoints * g_pip)
-            {
                 ModifyPendingStop(ORDER_TYPE_SELL_STOP, newStop);
-            }
         }
     }
 
-    // SELL đang mở, chưa có BUY
     if(sellPos > 0 && buyPos == 0)
     {
         double newStop = NormalizePrice(ask + InpTrailingDistance * g_pip);
@@ -561,9 +546,7 @@ void TrailOppositePending(int buyPos, int sellPos, int buyPend, int sellPend)
         {
             double currentStop = GetPendingPrice(ORDER_TYPE_BUY_STOP);
             if(newStop < currentStop - InpMinModifyPoints * g_pip)
-            {
                 ModifyPendingStop(ORDER_TYPE_BUY_STOP, newStop);
-            }
         }
     }
 }
@@ -580,9 +563,6 @@ void ModifyPendingStop(ENUM_ORDER_TYPE type, double newPrice)
     }
 }
 
-//+------------------------------------------------------------------+
-//| Đóng tất cả vị thế + xóa pending                                 |
-//+------------------------------------------------------------------+
 void CloseAllOrders()
 {
     for(int attempt = 0; attempt < InpFastCloseLoops; attempt++)
@@ -600,7 +580,6 @@ void CloseAllOrders()
     }
     DeleteAllPending();
 
-    // Reset toàn bộ tracking cho chu kỳ mới
     g_lastDCATriggerBuy   = 0;
     g_lastDCATriggerSell  = 0;
     g_lastDCATimeBuy      = 0;
@@ -621,11 +600,6 @@ void DeleteAllPending()
     }
 }
 
-//+------------------------------------------------------------------+
-//| NEWS PAUSE - MT5 Calendar                                        |
-//+------------------------------------------------------------------+
-
-// Cập nhật cache tin tức từ MT5 Calendar (chỉ tin đỏ - HIGH impact)
 void UpdateNewsCache()
 {
     if(TimeCurrent() - g_lastNewsUpdate < InpNewsUpdateSec) return;
@@ -640,7 +614,6 @@ void UpdateNewsCache()
     int total = CalendarValueHistory(values, from, to, NULL, NULL);
     if(total <= 0) return;
 
-    // Xây danh sách tiền tệ cần lọc
     string currencies[];
     BuildCurrencyList(currencies);
 
@@ -648,14 +621,10 @@ void UpdateNewsCache()
     {
         MqlCalendarEvent event;
         if(!CalendarEventById(values[i].event_id, event)) continue;
-
-        // Chỉ lấy tin HIGH impact (màu đỏ)
         if(event.importance != CALENDAR_IMPORTANCE_HIGH) continue;
 
         MqlCalendarCountry country;
         if(!CalendarCountryById(event.country_id, country)) continue;
-
-        // Lọc theo tiền tệ
         if(!IsCurrencyInList(country.currency, currencies)) continue;
 
         int idx = ArraySize(g_newsCache);
@@ -663,15 +632,13 @@ void UpdateNewsCache()
         g_newsCache[idx].time     = values[i].time;
         g_newsCache[idx].currency = country.currency;
     }
-
 }
 
-// Kiểm tra có đang trong vùng tin không
 bool IsInNewsZone()
 {
-    datetime now          = TimeCurrent();
-    datetime pauseBefore  = (datetime)(InpNewsPauseBefore * 60);
-    datetime resumeAfter  = (datetime)(InpNewsResumeAfter * 60);
+    datetime now         = TimeCurrent();
+    datetime pauseBefore = (datetime)(InpNewsPauseBefore * 60);
+    datetime resumeAfter = (datetime)(InpNewsResumeAfter * 60);
 
     for(int i = 0; i < ArraySize(g_newsCache); i++)
     {
@@ -682,7 +649,6 @@ bool IsInNewsZone()
     return false;
 }
 
-// Xây danh sách tiền tệ cần lọc từ các input string
 void BuildCurrencyList(string &list[])
 {
     ArrayResize(list, 0);
@@ -713,9 +679,6 @@ bool IsCurrencyInList(string currency, const string &list[])
     return false;
 }
 
-//+------------------------------------------------------------------+
-//| WEEKEND CLOSE                                                    |
-//+------------------------------------------------------------------+
 bool CheckWeekendClose()
 {
     if(!InpWeekendClose) return false;
@@ -730,28 +693,23 @@ bool CheckWeekendClose()
                   || dt.day_of_week == 0;
 
     if(!isWeekend) { g_weekendClosed = false; return false; }
-
     if(!g_weekendClosed) { CloseAllOrders(); g_weekendClosed = true; }
     return true;
 }
 
-//+------------------------------------------------------------------+
-//| CAPITAL GUARD                                                    |
-//+------------------------------------------------------------------+
 bool CheckCapitalGuard()
 {
     if(!InpCapGuardProfit && !InpCapGuardLoss) return false;
 
     if(g_capGuardActive)
     {
-        // Tự resume theo thời gian
         if(InpCapGuardRestMin > 0 && g_capGuardResumeAt > 0 &&
            TimeCurrent() >= g_capGuardResumeAt)
         {
-            g_capGuardActive    = false;
-            g_guardSeenOrder    = false;
-            g_capGuardResumeAt  = 0;
-            g_startCapital      = AccountInfoDouble(ACCOUNT_BALANCE);
+            g_capGuardActive   = false;
+            g_guardSeenOrder   = false;
+            g_capGuardResumeAt = 0;
+            g_startCapital     = AccountInfoDouble(ACCOUNT_BALANCE);
             return false;
         }
         return g_capGuardActive;
@@ -770,8 +728,7 @@ bool CheckCapitalGuard()
         g_capGuardActive   = true;
         g_guardSeenOrder   = false;
         g_capGuardResumeAt = (InpCapGuardRestMin > 0)
-                             ? TimeCurrent() + InpCapGuardRestMin * 60
-                             : 0;
+                             ? TimeCurrent() + InpCapGuardRestMin * 60 : 0;
         return true;
     }
     if(InpCapGuardLoss && changePct <= -InpCapGuardLossPct)
@@ -780,16 +737,12 @@ bool CheckCapitalGuard()
         g_capGuardActive   = true;
         g_guardSeenOrder   = false;
         g_capGuardResumeAt = (InpCapGuardRestMin > 0)
-                             ? TimeCurrent() + InpCapGuardRestMin * 60
-                             : 0;
+                             ? TimeCurrent() + InpCapGuardRestMin * 60 : 0;
         return true;
     }
     return false;
 }
 
-//+------------------------------------------------------------------+
-//| HELPER FUNCTIONS                                                 |
-//+------------------------------------------------------------------+
 double GetTotalProfit()
 {
     double total = 0;
@@ -826,7 +779,6 @@ int CountPending(ENUM_ORDER_TYPE type)
     return count;
 }
 
-// Giá lệnh bất lợi nhất: Buy → thấp nhất | Sell → cao nhất
 double GetExtremePositionPrice(ENUM_POSITION_TYPE dir)
 {
     double extreme = -1;
@@ -847,8 +799,7 @@ double GetExtremeLot(ENUM_POSITION_TYPE dir)
 {
     double ep = GetExtremePositionPrice(dir);
 
-    // Nếu lệnh DCA async chưa visible (trigger xa hơn extreme đang thấy),
-    // dùng lot đã lưu để tính lot tiếp theo đúng chuỗi
+    // Async: lệnh DCA chưa visible trong danh sách, dùng lot đã lưu để chuỗi lot đúng thứ tự
     if(dir == POSITION_TYPE_BUY && g_lastDCALotBuy > 0 && g_lastDCATriggerBuy > 0)
     {
         if(ep < 0 || g_lastDCATriggerBuy < ep)
@@ -920,9 +871,6 @@ int CountMagic0Positions()
     return count;
 }
 
-//+------------------------------------------------------------------+
-//| GUI HELPERS                                                      |
-//+------------------------------------------------------------------+
 void Lbl(string name, string text, int x, int y, color clr = clrSilver, int sz = 9)
 {
     string obj = GUI + name;
@@ -933,12 +881,12 @@ void Lbl(string name, string text, int x, int y, color clr = clrSilver, int sz =
         ObjectSetInteger(0, obj, OBJPROP_BACK,       false);
         ObjectSetInteger(0, obj, OBJPROP_SELECTABLE, false);
     }
-    ObjectSetInteger(0, obj, OBJPROP_XDISTANCE,  x);
-    ObjectSetInteger(0, obj, OBJPROP_YDISTANCE,  y);
-    ObjectSetString(0,  obj, OBJPROP_TEXT,     text);
-    ObjectSetString(0,  obj, OBJPROP_FONT,     "Courier New");
-    ObjectSetInteger(0, obj, OBJPROP_COLOR,    clr);
-    ObjectSetInteger(0, obj, OBJPROP_FONTSIZE, sz);
+    ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, x);
+    ObjectSetInteger(0, obj, OBJPROP_YDISTANCE, y);
+    ObjectSetString(0,  obj, OBJPROP_TEXT,      text);
+    ObjectSetString(0,  obj, OBJPROP_FONT,      "Courier New");
+    ObjectSetInteger(0, obj, OBJPROP_COLOR,     clr);
+    ObjectSetInteger(0, obj, OBJPROP_FONTSIZE,  sz);
 }
 
 void CreateBtn(string name, string text, int x, int y, int w, int h, color bg, color border = clrSilver)
@@ -976,20 +924,16 @@ void CreateBG(string name, int x, int y, int w, int h, color bg, color border)
         ObjectSetInteger(0, obj, OBJPROP_BACK,        false);
         ObjectSetInteger(0, obj, OBJPROP_SELECTABLE,  false);
     }
-    ObjectSetInteger(0, obj, OBJPROP_XDISTANCE,   x);
-    ObjectSetInteger(0, obj, OBJPROP_YDISTANCE,   y);
-    ObjectSetInteger(0, obj, OBJPROP_XSIZE,       w);
-    ObjectSetInteger(0, obj, OBJPROP_YSIZE,       h);
-    ObjectSetInteger(0, obj, OBJPROP_BGCOLOR,     bg);
-    ObjectSetInteger(0, obj, OBJPROP_COLOR,       border);
+    ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, x);
+    ObjectSetInteger(0, obj, OBJPROP_YDISTANCE, y);
+    ObjectSetInteger(0, obj, OBJPROP_XSIZE,     w);
+    ObjectSetInteger(0, obj, OBJPROP_YSIZE,     h);
+    ObjectSetInteger(0, obj, OBJPROP_BGCOLOR,   bg);
+    ObjectSetInteger(0, obj, OBJPROP_COLOR,     border);
 }
 
-//+------------------------------------------------------------------+
-//| Cập nhật panel thông tin trên chart                              |
-//+------------------------------------------------------------------+
 void UpdateGUI()
 {
-    // ── Thu thập dữ liệu ──
     double balance = AccountInfoDouble(ACCOUNT_BALANCE);
     double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
     double spread  = (double)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
@@ -1010,13 +954,11 @@ void UpdateGUI()
     }
     double pnlPct = (balance > 0) ? totalProfit / balance * 100.0 : 0;
 
-    // ── Thời gian ──
     MqlDateTime dt;
     TimeToStruct(TimeLocal(), dt);
     string tStr = StringFormat("%04d/%02d/%02d  %02d:%02d:%02d",
                                dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec);
 
-    // ── Theme colors ──
     color thBg1, thBd1, thBg2, thBd2, thTitle, thSep, thText, thDim;
     color thGreen, thGreenDim, thRed, thP2T, thSA1, thSA2;
     color thBtnCloseBg, thBtnCloseBd, thBtnThemeBg, thBtnThemeBd;
@@ -1047,11 +989,9 @@ void UpdateGUI()
         thBtnThemeBg=C'190,200,230'; thBtnThemeBd=C'110,140,215';
     }
 
-    // ── Mode ──
     string modeName = g_semiAutoMode ? "SEMI-AUTO" : "AUTO";
     color  modeClr  = g_semiAutoMode ? clrOrange : thGreen;
 
-    // ── Market Filter ──
     string tfName = EnumToString(InpFilterTF);
     StringReplace(tfName, "PERIOD_", "");
     string filterStr, filterValStr; color filterClr, filterValClr;
@@ -1075,7 +1015,6 @@ void UpdateGUI()
         filterClr    = thText; filterValClr = thDim;
     }
 
-    // ── News ──
     string newsStr; color newsClr;
     if(!InpNewsPauseEnabled)
         { newsStr = "OFF";    newsClr = thDim; }
@@ -1084,22 +1023,19 @@ void UpdateGUI()
     else
         { newsStr = "Clear";  newsClr = thGreen; }
 
-    // ── Capital Guard ──
     string guardStr; color guardClr;
     if(!g_capGuardActive) {
         guardStr = "OK"; guardClr = thGreen;
     } else if(g_capGuardResumeAt > 0) {
         int secsLeft = (int)(g_capGuardResumeAt - TimeCurrent());
-        if(secsLeft > 0)
-            guardStr = StringFormat("WAIT %dm%ds", secsLeft/60, secsLeft%60);
-        else
-            guardStr = "RESUMING...";
+        guardStr = (secsLeft > 0)
+                   ? StringFormat("WAIT %dm%ds", secsLeft/60, secsLeft%60)
+                   : "RESUMING...";
         guardClr = clrOrange;
     } else {
         guardStr = "STOPPED"; guardClr = thRed;
     }
 
-    // ── Weekend Close ──
     string wkndStr; color wkndClr;
     if(!InpWeekendClose)
         { wkndStr = "OFF";    wkndClr = thDim; }
@@ -1108,7 +1044,6 @@ void UpdateGUI()
     else
         { wkndStr = "OK";     wkndClr = thGreen; }
 
-    // ── Lãi ngày ──
     if(g_lastDay != dt.day_of_year) {
         g_dayStartEquity = equity;
         g_lastDay        = dt.day_of_year;
@@ -1116,13 +1051,11 @@ void UpdateGUI()
     double dailyPnl    = equity - g_dayStartEquity;
     double dailyPnlPct = (g_dayStartEquity > 0) ? dailyPnl / g_dayStartEquity * 100.0 : 0;
 
-    // ── Màu P/L ──
     color cTotal = (totalProfit >= 0) ? thGreen : thRed;
     color cBuy   = (buyProfit   >= 0) ? thGreen : thRed;
     color cSell  = (sellProfit  >= 0) ? thGreen : thRed;
     color cDaily = (dailyPnl    >= 0) ? thGreen : thRed;
 
-    // ══ Layout từ input ══
     int pX  = InpPanelX;
     int pY  = InpPanelY;
     int pW  = InpPanelW;
@@ -1132,48 +1065,43 @@ void UpdateGUI()
     int sep = s - 3;
     int ttl = s + 1;
 
-    int bg1H_auto = 7 + ttl + sep + 7*s + sep + 4*s + sep + 2*s + s;
-    int bg1H = (InpPanel1H > 0) ? InpPanel1H : bg1H_auto;
+    int bg1H = (InpPanel1H > 0) ? InpPanel1H : 7 + ttl + sep + 7*s + sep + 4*s + sep + 2*s + s;
     int bg2Y = pY + bg1H + InpPanelGap;
-    int bg2H_auto = g_semiAutoMode ? (s*5 + 20) : (s*3 + 10);
-    int bg2H = (InpPanel2H > 0) ? InpPanel2H : bg2H_auto;
+    int bg2H = (InpPanel2H > 0) ? InpPanel2H : (g_semiAutoMode ? (s*5 + 20) : (s*3 + 10));
 
-    // ══ PANEL 1: THÔNG TIN ══
     CreateBG("BG1", pX, pY, pW, bg1H, thBg1, thBd1);
 
     int x = cx, y = pY + 7;
-    Lbl("T",   "  Mr Kindly EA",    x, y, thTitle,    sz+1); y += ttl;
-    Lbl("S0",  "────────────────────────",  x, y, thSep       );    y += sep;
-    Lbl("Ti",  "Time   : " + tStr,          x, y, thText,  sz );    y += s;
-    Lbl("Md",  "Mode   : " + modeName,      x, y, modeClr, sz );    y += s;
-    Lbl("Ft",  "Filter : " + filterStr,     x, y, filterClr,sz);    y += s;
-    Lbl("FtV", filterValStr,                x, y, filterValClr,sz); y += s;
-    Lbl("Nw",  "News   : " + newsStr,       x, y, newsClr, sz );    y += s;
-    Lbl("Gd",  "Guard  : " + guardStr,      x, y, guardClr,sz );    y += s;
-    Lbl("Wk",  "Wknd   : " + wkndStr,       x, y, wkndClr, sz );    y += s;
-    Lbl("S1",  "────────────────────────",  x, y, thSep       );    y += sep;
+    Lbl("T",   "  Mr Kindly EA",               x, y, thTitle,     sz+1); y += ttl;
+    Lbl("S0",  "────────────────────────",      x, y, thSep             ); y += sep;
+    Lbl("Ti",  "Time   : " + tStr,             x, y, thText,      sz   ); y += s;
+    Lbl("Md",  "Mode   : " + modeName,         x, y, modeClr,     sz   ); y += s;
+    Lbl("Ft",  "Filter : " + filterStr,        x, y, filterClr,   sz   ); y += s;
+    Lbl("FtV", filterValStr,                   x, y, filterValClr, sz  ); y += s;
+    Lbl("Nw",  "News   : " + newsStr,          x, y, newsClr,     sz   ); y += s;
+    Lbl("Gd",  "Guard  : " + guardStr,         x, y, guardClr,    sz   ); y += s;
+    Lbl("Wk",  "Wknd   : " + wkndStr,          x, y, wkndClr,     sz   ); y += s;
+    Lbl("S1",  "────────────────────────",      x, y, thSep             ); y += sep;
     Lbl("Bl",  StringFormat("Balance: $%.2f",        balance),     x, y, thText, sz); y += s;
     Lbl("Fl",  StringFormat("Float  : $%.2f  (%.2f%%)", totalProfit, pnlPct),
-                                                                   x, y, cTotal, sz); y += s;
+                                                                    x, y, cTotal, sz); y += s;
     Lbl("Tg",  StringFormat("Target : $%.2f",        InpTotalProfitTP),
-                                                                   x, y, thText, sz); y += s;
+                                                                    x, y, thText, sz); y += s;
     Lbl("Dy",  StringFormat("Daily  : $%.2f  (%.2f%%)", dailyPnl, dailyPnlPct),
-                                                                   x, y, cDaily, sz); y += s;
-    Lbl("S2",  "────────────────────────",  x, y, thSep       );    y += sep;
-    Lbl("Bp",  StringFormat("BUY  : %d ord  Lot:%.2f  $%.2f",  nBuy,  lotBuy,  buyProfit),
-                                                                   x, y, cBuy,   sz); y += s;
-    Lbl("Sp",  StringFormat("SELL : %d ord  Lot:%.2f  $%.2f",  nSell, lotSell, sellProfit),
-                                                                   x, y, cSell,  sz); y += s;
+                                                                    x, y, cDaily, sz); y += s;
+    Lbl("S2",  "────────────────────────",      x, y, thSep             ); y += sep;
+    Lbl("Bp",  StringFormat("BUY  : %d ord  Lot:%.2f  $%.2f", nBuy,  lotBuy,  buyProfit),
+                                                                    x, y, cBuy,   sz); y += s;
+    Lbl("Sp",  StringFormat("SELL : %d ord  Lot:%.2f  $%.2f", nSell, lotSell, sellProfit),
+                                                                    x, y, cSell,  sz); y += s;
     Lbl("To",  StringFormat("Total: %d orders   Spread: %.0fpt", nBuy+nSell, spread),
-                                                                   x, y, thText, sz);
+                                                                    x, y, thText, sz);
 
-    // ══ PANEL 2: ĐIỀU KHIỂN ══
     CreateBG("BG2", pX, bg2Y, pW, bg2H, thBg2, thBd2);
 
     y = bg2Y + 10;
     Lbl("P2T", "═══  ĐIỀU KHIỂN  ═══", cx, y, thP2T, sz);
 
-    // Nút theme (Dark/Light) góc phải panel 2
     string themeLabel = g_darkMode ? "Light" : "Dark";
     CreateBtn("BtnTheme", themeLabel, pX + pW - 54, bg2Y + 7, 47, 18,
               thBtnThemeBg, thBtnThemeBd);
@@ -1192,8 +1120,7 @@ void UpdateGUI()
     if(g_semiAutoMode)
     {
         saStr    = StringFormat("  TP: %dpip  SL: %dpip", InpSemiAutoTP, InpSemiAutoSL);
-        saTotStr = StringFormat("  Tot TP:$%.1f  SL:$%.1f",
-                                InpSemiAutoTotalTP, InpSemiAutoTotalSL);
+        saTotStr = StringFormat("  Tot TP:$%.1f  SL:$%.1f", InpSemiAutoTotalTP, InpSemiAutoTotalSL);
     }
     Lbl("P2SA",  saStr,    cx, bg2Y + 52, thSA1, sz);
     Lbl("P2SAT", saTotStr, cx, bg2Y + 52 + (g_semiAutoMode ? s : 0), thSA2, sz);
@@ -1214,5 +1141,4 @@ double NormalizeLot(double lot)
     lot = MathMin(lot, g_lotMax);
     return NormalizeDouble(lot, 2);
 }
-
 //+------------------------------------------------------------------+

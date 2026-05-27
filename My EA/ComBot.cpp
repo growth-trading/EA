@@ -416,7 +416,7 @@ void CalculatePositionStats()
 void TradeCom()
 {
     if (g_dailyTargetHit || g_dailyLossHit) return;
-    if (!IsInTradingHours()) return;
+    if (!IsInTradingHours() && g_totalPos == 0) return;
     if (g_totalPos >= MaxPositions) return;
 
     if (g_buyLots < 0.001 && g_sellLots < 0.001)

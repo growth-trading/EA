@@ -7,6 +7,7 @@ CChartObjectLabel lblTime,    lblStatus,  lblHours;
 CChartObjectLabel lblBalance, lblInitial, lblDayPnL,  lblFloat;
 CChartObjectLabel lblDDNow,   lblDDMax,   lblProfitDay;
 CChartObjectLabel lblBuyPnL,  lblBuyOrd,  lblSelPnL,  lblSelOrd, lblTotal;
+CChartObjectLabel lblADX;
 CChartObjectText   txtTimeCountDown;
 CChartObjectButton btnReset;
 
@@ -24,10 +25,15 @@ input int    TrailPips       = 50;        // Khoảng cách trailing SL tính t�
 
 input group  "=== Thời gian giao dịch ==="
 input int    LocalUTCOffset  = 7;         // Múi giờ địa phương (VD: 7 = UTC+7)
-input int    StartHour       = 8;         // Giờ bắt đầu giao dịch (giờ địa phương)
+input int    StartHour       = 7;         // Giờ bắt đầu giao dịch (giờ địa phương)
 input int    StartMinute     = 0;         // Phút bắt đầu giao dịch
-input int    EndHour         = 22;        // Giờ kết thúc giao dịch (giờ địa phương)
+input int    EndHour         = 24;        // Giờ kết thúc giao dịch (giờ địa phương)
 input int    EndMinute       = 0;         // Phút kết thúc giao dịch
+
+input group  "=== Bộ lọc ADX ==="
+input int             ADXPeriod      = 14;          // Chu kỳ ADX
+input ENUM_TIMEFRAMES ADXTimeframe   = PERIOD_M1;   // Khung thời gian ADX
+input double          ADXMinStrength = 20.0;        // Ngưỡng ADX tối thiểu để vào lệnh
 
 input group  "=== Giao diện panel ==="
 input int    PanelLeft       = 5;         // Khoảng cách từ mép trái màn hình (pixel)
@@ -52,6 +58,8 @@ int    g_buyCount        = 0;
 int    g_sellCount       = 0;
 double g_dailyClosedPnL  = 0.0; // Lợi nhuận đã đóng trong ngày (cache từ OnTimer)
 double g_closedPnLOffset = 0.0; // Offset khi reset giữa ngày
+int    g_adxHandle     = INVALID_HANDLE;
+double g_adxValue      = 0.0;
 
 //+------------------------------------------------------------------+
 //| Expert initialization function                                   |
@@ -69,7 +77,10 @@ int OnInit()
     int sw = PanelWidth - 20;  // separator width
 
     // --- Nền panel ---
-    if (!panelBg.Create(0, "cbPanelBg", 0, PanelLeft, y - 10, PanelWidth, 405)) return INIT_FAILED;
+    g_adxHandle = iADX(_Symbol, ADXTimeframe, ADXPeriod);
+    if (g_adxHandle == INVALID_HANDLE) return INIT_FAILED;
+
+    if (!panelBg.Create(0, "cbPanelBg", 0, PanelLeft, y - 10, PanelWidth, 427)) return INIT_FAILED;
     panelBg.BackColor(C'15,20,28');
     panelBg.BorderType(BORDER_FLAT);
     panelBg.Color(C'50,65,80');
@@ -78,43 +89,44 @@ int OnInit()
     if (!CreateLable(lblTime,    "cbTime",    "Time  : --",             x, y     )) return INIT_FAILED;
     if (!CreateLable(lblStatus,  "cbStatus",  "Status: --",             x, y+ 22 )) return INIT_FAILED;
     if (!CreateLable(lblHours,   "cbHours",   "Hours : --",             x, y+ 44 )) return INIT_FAILED;
+    if (!CreateLable(lblADX,     "cbADX",     "ADX   : --",             x, y+ 66 )) return INIT_FAILED;
 
     // Separator 1
-    if (!sep1.Create(0, "cbSep1", 0, PanelLeft+5, y+60, sw, 1)) return INIT_FAILED;
+    if (!sep1.Create(0, "cbSep1", 0, PanelLeft+5, y+82, sw, 1)) return INIT_FAILED;
     sep1.BackColor(C'50,65,80'); sep1.BorderType(BORDER_FLAT); sep1.Color(C'50,65,80');
 
     // Nhóm 2: Tài khoản
-    if (!CreateLable(lblBalance, "cbBalance", "Balance: $--",           x, y+ 68 )) return INIT_FAILED;
-    if (!CreateLable(lblInitial, "cbInitial", "Initial: $--",           x, y+ 90 )) return INIT_FAILED;
-    if (!CreateLable(lblDayPnL,  "cbDayPnL",  "Day P/L: $--",          x, y+112 )) return INIT_FAILED;
-    if (!CreateLable(lblFloat,   "cbFloat",   "Float  : $--",           x, y+134 )) return INIT_FAILED;
+    if (!CreateLable(lblBalance, "cbBalance", "Balance: $--",           x, y+ 90 )) return INIT_FAILED;
+    if (!CreateLable(lblInitial, "cbInitial", "Initial: $--",           x, y+112 )) return INIT_FAILED;
+    if (!CreateLable(lblDayPnL,  "cbDayPnL",  "Day P/L: $--",          x, y+134 )) return INIT_FAILED;
+    if (!CreateLable(lblFloat,   "cbFloat",   "Float  : $--",           x, y+156 )) return INIT_FAILED;
 
     // Separator 2
-    if (!sep2.Create(0, "cbSep2", 0, PanelLeft+5, y+152, sw, 1)) return INIT_FAILED;
+    if (!sep2.Create(0, "cbSep2", 0, PanelLeft+5, y+174, sw, 1)) return INIT_FAILED;
     sep2.BackColor(C'50,65,80'); sep2.BorderType(BORDER_FLAT); sep2.Color(C'50,65,80');
 
     // Nhóm 3: DD & Profit
-    if (!CreateLable(lblDDNow,     "cbDDNow",     "DD Now    : --%",     x, y+160 )) return INIT_FAILED;
-    if (!CreateLable(lblDDMax,     "cbDDMax",     "DD Max    : --%",     x, y+182 )) return INIT_FAILED;
-    if (!CreateLable(lblProfitDay, "cbProfitDay", "Profit Day: $--",     x, y+204 )) return INIT_FAILED;
+    if (!CreateLable(lblDDNow,     "cbDDNow",     "DD Now    : --%",     x, y+182 )) return INIT_FAILED;
+    if (!CreateLable(lblDDMax,     "cbDDMax",     "DD Max    : --%",     x, y+204 )) return INIT_FAILED;
+    if (!CreateLable(lblProfitDay, "cbProfitDay", "Profit Day: $--",     x, y+226 )) return INIT_FAILED;
 
     // Separator 3
-    if (!sep3.Create(0, "cbSep3", 0, PanelLeft+5, y+222, sw, 1)) return INIT_FAILED;
+    if (!sep3.Create(0, "cbSep3", 0, PanelLeft+5, y+244, sw, 1)) return INIT_FAILED;
     sep3.BackColor(C'50,65,80'); sep3.BorderType(BORDER_FLAT); sep3.Color(C'50,65,80');
 
     // Nhóm 4: Buy / Sell
-    if (!CreateLable(lblBuyPnL,  "cbBuyPnL",  "Buy P/L: $--",            x, y+230 )) return INIT_FAILED;
-    if (!CreateLable(lblBuyOrd,  "cbBuyOrd",  "Buy Ord: 0    Lot: 0.00", x, y+252 )) return INIT_FAILED;
-    if (!CreateLable(lblSelPnL,  "cbSelPnL",  "Sel P/L: $--",            x, y+274 )) return INIT_FAILED;
-    if (!CreateLable(lblSelOrd,  "cbSelOrd",  "Sel Ord: 0    Lot: 0.00", x, y+296 )) return INIT_FAILED;
-    if (!CreateLable(lblTotal,   "cbTotal",   "Total  : 0 orders",        x, y+318 )) return INIT_FAILED;
+    if (!CreateLable(lblBuyPnL,  "cbBuyPnL",  "Buy P/L: $--",            x, y+252 )) return INIT_FAILED;
+    if (!CreateLable(lblBuyOrd,  "cbBuyOrd",  "Buy Ord: 0    Lot: 0.00", x, y+274 )) return INIT_FAILED;
+    if (!CreateLable(lblSelPnL,  "cbSelPnL",  "Sel P/L: $--",            x, y+296 )) return INIT_FAILED;
+    if (!CreateLable(lblSelOrd,  "cbSelOrd",  "Sel Ord: 0    Lot: 0.00", x, y+318 )) return INIT_FAILED;
+    if (!CreateLable(lblTotal,   "cbTotal",   "Total  : 0 orders",        x, y+340 )) return INIT_FAILED;
 
     // Separator 4
-    if (!sep4.Create(0, "cbSep4", 0, PanelLeft+5, y+340, sw, 1)) return INIT_FAILED;
+    if (!sep4.Create(0, "cbSep4", 0, PanelLeft+5, y+362, sw, 1)) return INIT_FAILED;
     sep4.BackColor(C'50,65,80'); sep4.BorderType(BORDER_FLAT); sep4.Color(C'50,65,80');
 
     // Nút reset
-    if (!btnReset.Create(0, "cbBtnReset", 0, x, y+348, sw, 28)) return INIT_FAILED;
+    if (!btnReset.Create(0, "cbBtnReset", 0, x, y+370, sw, 28)) return INIT_FAILED;
     btnReset.Description("Reset Daily");
     btnReset.Color(clrWhite);
     btnReset.BackColor(C'150,45,35');
@@ -132,6 +144,7 @@ int OnInit()
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason)
 {
+    if (g_adxHandle != INVALID_HANDLE) IndicatorRelease(g_adxHandle);
     EventKillTimer();
 }
 
@@ -220,6 +233,11 @@ void OnTimer()
     else
     { lblHours.Description(StringFormat("Hours : %02d:%02d - %02d:%02d  --", StartHour, StartMinute, EndHour, EndMinute)); lblHours.Color(clrSilver); }
 
+    // --- ADX ---
+    bool adxOK = g_adxValue >= ADXMinStrength;
+    lblADX.Description(StringFormat("ADX   : %.1f  (min %.0f)  %s", g_adxValue, ADXMinStrength, adxOK ? "OK" : "--"));
+    lblADX.Color(adxOK ? clrLimeGreen : clrSilver);
+
     // --- Balance & Initial ---
     double balance = AccountInfoDouble(ACCOUNT_BALANCE);
     lblBalance.Description("Balance: $" + DoubleToString(balance, 2));
@@ -280,9 +298,18 @@ void OnTimer()
 //+------------------------------------------------------------------+
 //| Expert tick function                                             |
 //+------------------------------------------------------------------+
+void UpdateADX()
+{
+    if (g_adxHandle == INVALID_HANDLE) return;
+    double buf[];
+    if (CopyBuffer(g_adxHandle, 0, 0, 1, buf) > 0)
+        g_adxValue = buf[0];
+}
+
 void OnTick()
 {
     CalculatePositionStats();
+    UpdateADX();
 
     double totalNetProfit = g_buyProfit + g_sellProfit + g_totalSwap;
 
@@ -418,6 +445,7 @@ void TradeCom()
     if (g_dailyTargetHit || g_dailyLossHit) return;
     if (!IsInTradingHours() && g_totalPos == 0) return;
     if (g_totalPos >= MaxPositions) return;
+    if (g_adxValue < ADXMinStrength) return;
 
     if (g_buyLots < 0.001 && g_sellLots < 0.001)
     {

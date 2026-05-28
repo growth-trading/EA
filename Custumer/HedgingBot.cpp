@@ -16,73 +16,90 @@
 #include <Trade\PositionInfo.mqh>
 #include <Trade\OrderInfo.mqh>
 #include <Trade\SymbolInfo.mqh>
-#include <ChartObjects\ChartObjectsTxtControls.mqh>
-
-//+------------------------------------------------------------------+
-//|                                                                  |
-//|  INPUT PARAMETERS SCHEMA                                         |
-//|                                                                  |
-//+------------------------------------------------------------------+
 
 input group "=== GENERAL ==="
-input int    InpMagicNumber    = 220426;          // Magic number nhan dien lenh cua bot
-input string InpComment        = "BOT_XAUUSD_v2"; // Comment prefix cho tat ca order
+input int    InpMagicNumber    = 220426;          // Magic number nhận diện lệnh của bot
+input string InpComment        = "BOT_XAUUSD_v2"; // Comment prefix cho tất cả order
 
 input group "=== LOT SIZE ==="
-input double InpLotSize        = 0.2;             // Lot co dinh cho moi lenh
+input double InpLotSize        = 0.2;             // Lot cố định cho mỗi lệnh
 
 input group "=== ENTRY ==="
-input double InpStraddleDist   = 1.5;             // Khoang cach straddle tu gia hien tai (don vi gia)
-input double InpStopLoss       = 3.0;             // SL cung tu entry (don vi gia)
-input double InpTakeProfit     = 15.0;            // TP tu entry (don vi gia)
+input double InpStraddleDist   = 1.5;             // Khoảng cách straddle từ giá hiện tại (đơn vị giá)
+input double InpStopLoss       = 3.0;             // SL cùng từ entry (đơn vị giá)
 
 input group "=== TIME FILTER ==="
-input int    InpStartHour      = 14;              // Gio bat dau trading (gio địa phương)
-input int    InpEndHour        = 22;              // Gio ket thuc T2-T5
-input int    InpEndMinute      = 30;              // Phut ket thuc T2-T5 -> 22:30
-input int    InpFridayEndHour  = 21;              // Gio T6 dong som
-input int    InpFridayEndMin   = 0;               // Phut T6 dong som -> 21:00
-input int    InTimeGMT         = 0;               // Giờ địa phương  
+input int    InpStartHour      = 14;              // Giờ bắt đầu trading (giờ địa phương)
+input int    InpEndHour        = 22;              // Giờ kết thúc T2-T5
+input int    InpEndMinute      = 30;              // Phút kết thúc T2-T5 -> 22:30
+input int    InpFridayEndHour  = 21;              // Giờ T6 đóng sớm
+input int    InpFridayEndMin   = 0;               // Phút T6 đóng sớm -> 21:00
+input int    InTimeGMT         = 0;               // Giờ địa phương
+
 input group "=== ROLLOVER FILTER ==="
-input int    InpRolloverStartH = 3;               // Gio rollover bat dau
-input int    InpRolloverStartM = 45;              // Phut rollover bat dau -> 03:45
-input int    InpRolloverEndH   = 4;               // Gio rollover ket thuc
-input int    InpRolloverEndM   = 30;              // Phut rollover ket thuc -> 04:30
+input int    InpRolloverStartH = 3;               // Giờ rollover bắt đầu
+input int    InpRolloverStartM = 45;              // Phút rollover bắt đầu -> 03:45
+input int    InpRolloverEndH   = 4;               // Giờ rollover kết thúc
+input int    InpRolloverEndM   = 30;              // Phút rollover kết thúc -> 04:30
 
 input group "=== ATR FILTER ==="
-input int              InpATRPeriod = 14;         // Chu ky ATR
-input ENUM_TIMEFRAMES  InpATRTF     = PERIOD_M5;  // Khung thoi gian ATR
-input double           InpATRMin    = 6.0;        // ATR min (don vi gia) de cho vao lenh
-input double           InpATRMax    = 28.0;       // ATR max (don vi gia) de cho vao lenh
+input int              InpATRPeriod = 14;         // Chu kỳ ATR
+input ENUM_TIMEFRAMES  InpATRTF     = PERIOD_M5;  // Khung thời gian ATR
+input double           InpATRMin    = 6.0;        // ATR min (đơn vị giá) để cho vào lệnh
+input double           InpATRMax    = 28.0;       // ATR max (đơn vị giá) để cho vào lệnh
 
 input group "=== ADX FILTER ==="
-input int              InpADXPeriod = 14;         // Chu ky ADX
-input ENUM_TIMEFRAMES  InpADXTF     = PERIOD_M15; // Khung thoi gian ADX
-input double           InpADXMin    = 20.0;       // ADX phai > gia tri nay (exclusive)
-input double           InpADXMax    = 55.0;       // ADX phai < gia tri nay (exclusive)
+input int              InpADXPeriod = 14;         // Chu kỳ ADX
+input ENUM_TIMEFRAMES  InpADXTF     = PERIOD_M15; // Khung thời gian ADX
+input double           InpADXMin    = 20.0;       // ADX phải > giá trị này (exclusive)
+input double           InpADXMax    = 55.0;       // ADX phải < giá trị này (exclusive)
 
 input group "=== SPREAD FILTER ==="
-input int    InpMaxSpreadPts   = 600;              // Spread max (diem) = 0.6 gia
+input int    InpMaxSpreadPts   = 600;              // Spread max (điểm) = 0.6 giá
 
 input group "=== RISK MANAGEMENT ==="
-input double InpDailyLossPct   = 15.0;            // Gioi han lo ngay (%)
-input int    InpMaxLossStreak  = 5;               // Max thua lien tiep truoc khi pause
-input int    InpPauseMinutes   = 60;              // Thoi gian pause sau loss streak (phut)
+input double InpDailyLossPct   = 15.0;            // Giới hạn lỗ ngày (%)
+input int    InpMaxLossStreak  = 5;               // Max thua liên tiếp trước khi pause
+input int    InpPauseMinutes   = 60;              // Thời gian pause sau loss streak (phút)
 
-input group "=== TRAILING SL ==="
-input bool   InpEnableTrailing = true;            // Bat trailing SL
-input double InpTrailTrigger   = 3.0;             // Muc lai de kich hoat trailing (don vi gia)
+input group "=== TRAILING TIERS ==="
+input bool   InpEnableTrailing = true;   // Bật trailing SL theo tier
+// Tier 1 — dynamic trail: cắt khi lùi InpT1Trail từ peak
+input double InpT1Trigger = 1.0;   // Tier 1 kích hoạt khi peak đạt (đơn vị giá)
+input double InpT1Trail   = 0.5;   // Tier 1 cắt khi lùi bao nhiêu từ peak
+// Tier 2-6 — fixed lock: khi peak vượt ngưỡng, SL được nâng lên mức lock cố định
+input double InpT2Trigger = 1.5;   // Tier 2 kích hoạt khi peak đạt
+input double InpT2Lock    = 1.0;   // Tier 2 lock SL tại mức lãi này (tính từ entry)
+input double InpT3Trigger = 2.0;   // Tier 3 kích hoạt khi peak đạt
+input double InpT3Lock    = 1.0;   // Tier 3 lock SL tại
+input double InpT4Trigger = 3.0;   // Tier 4 kích hoạt khi peak đạt
+input double InpT4Lock    = 2.0;   // Tier 4 lock SL tại
+input double InpT5Trigger = 5.0;   // Tier 5 kích hoạt khi peak đạt
+input double InpT5Lock    = 3.5;   // Tier 5 lock SL tại
+input double InpT6Trigger = 8.0;   // Tier 6 kích hoạt khi peak đạt
+input double InpT6Lock    = 6.0;   // Tier 6 lock SL tại
 
 input group "=== TELEGRAM ==="
-input bool   InpEnableTelegram = true;            // Master switch bat/tat Telegram
-input string InpTelegramToken  = "";              // Bot token tu @BotFather
-input string InpTelegramChatID = "1903206789";    // Chat ID nguoi nhan
-input bool   InpNotifyEntry    = true;            // Notify khi dat straddle
-input bool   InpNotifyExit     = true;            // Notify khi dong lenh
+input bool   InpEnableTelegram = true;            // Master switch bật/tắt Telegram
+input string InpTelegramToken  = "";              // Bot token từ @BotFather
+input string InpTelegramChatID = "1903206789";    // Chat ID người nhận
+input bool   InpNotifyEntry    = true;            // Notify khi đặt straddle
+input bool   InpNotifyExit     = true;            // Notify khi đóng lệnh
 input bool   InpNotifyReset    = true;            // Notify khi reset
-input bool   InpNotifyDaily    = true;            // Gui tong ket ngay luc 23:00
-input group "=== SHIFT ==="
-input int Shift = 400;
+input bool   InpNotifyDaily    = true;            // Gửi tổng kết ngày lúc 23:00
+
+input group "=== PANEL HIỂN THỊ ==="
+input int  InpPanelX   = 5;    // Vị trí X panel (pixel từ trái)
+input int  InpPanelY   = 18;   // Vị trí Y panel (pixel từ trên)
+input int  InpPanelW   = 262;  // Chiều rộng panel
+input int  InpFontSz   = 9;    // Cỡ chữ
+input int  InpLineH    = 16;   // Khoảng cách dòng (pixel)
+input int  InpPanelGap = 4;    // Khoảng cách giữa các panel (pixel)
+input int  InpPanel1H  = 0;    // Chiều cao panel 1 — Trạng thái (0 = tự tính)
+input int  InpPanel2H  = 0;    // Chiều cao panel 2 — Bộ lọc (0 = tự tính)
+input int  InpPanel3H  = 0;    // Chiều cao panel 3 — Cấu hình (0 = tự tính)
+input int  InpPanel4H  = 0;    // Chiều cao panel 4 — Điều khiển (0 = tự tính)
+
 //+------------------------------------------------------------------+
 //|  CONSTANTS                                                       |
 //+------------------------------------------------------------------+
@@ -104,19 +121,19 @@ input int Shift = 400;
 #define DISCONNECT_ALERT_S   300
 
 //+------------------------------------------------------------------+
-//|  PHAN 12 — STATE MACHINE (9 trang thai)                          |
+//|  STATE MACHINE (9 trạng thái)                                    |
 //+------------------------------------------------------------------+
 
 enum EA_STATE {
-    STATE_IDLE,         // Khong co position/pending, cho filter PASS
-    STATE_PLACING,      // Dang dat straddle
-    STATE_WAITING,      // Ca 2 pending dang treo, cho fill
-    STATE_POSITION,     // Co it nhat 1 position dang active
-    STATE_RECOVERING,   // Vua dong lo, dang check dieu kien reset
-    STATE_PAUSED,       // Loss streak 5, cho 60 phut
-    STATE_DAILY_STOP,   // Cham 15% lo ngay, dung den nua dem
-    STATE_EOD_CLOSE,    // Den gio EOD, dong tat ca
-    STATE_DISCONNECTED  // Mat ket noi broker
+    STATE_IDLE,         // Không có position/pending, chờ filter PASS
+    STATE_PLACING,      // Đang đặt straddle
+    STATE_WAITING,      // Cả 2 pending đang treo, chờ fill
+    STATE_POSITION,     // Có ít nhất 1 position đang active
+    STATE_RECOVERING,   // Vừa đóng lỗ, đang check điều kiện reset
+    STATE_PAUSED,       // Loss streak 5, chờ 60 phút
+    STATE_DAILY_STOP,   // Chạm 15% lỗ ngày, dừng đến nửa đêm
+    STATE_EOD_CLOSE,    // Đến giờ EOD, đóng tất cả
+    STATE_DISCONNECTED  // Mất kết nối broker
 };
 
 //+------------------------------------------------------------------+
@@ -174,54 +191,104 @@ long     g_rejADX            = 0;
 bool     g_dailySummarySent  = false;
 datetime g_disconnectStart   = 0;
 
+// Peak profit tracking per position (để tính tier trailing chính xác)
+#define MAX_TRACKED 30
+ulong    g_peakTkt[MAX_TRACKED];
+double   g_peakPnl[MAX_TRACKED];
+int      g_peakCnt = 0;
+
 // MQL5 trade objects
 CTrade          g_trade;
 CPositionInfo   g_posInfo;
 COrderInfo      g_orderInfo;
 CSymbolInfo     g_symInfo;
 
-CChartObjectLabel lblIsInTradingHour, lblIsInRolloverWindow, lblIsSpreadOK, lblIsATROK, lblIsADXOK;
+const string GUI = "BOT_";
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 2.5 — PRICE / POINT CONVERSION                             |
-//|  QUAN TRONG: XAUUSD - 1 gia = 100 diem (2-digit)                 |
-//|                       1 gia = 1000 diem (3-digit)                |
-//|  EA tu dong detect qua _Point                                    |
-//|                                                                  |
+//|  PRICE / POINT CONVERSION                                        |
+//|  QUAN TRỌNG: XAUUSD - 1 giá = 100 điểm (2-digit)                |
+//|                       1 giá = 1000 điểm (3-digit)               |
+//|  EA tự động detect qua _Point                                    |
 //+------------------------------------------------------------------+
 
-/// Chuyen doi gia -> diem (tu dong theo so digit cua symbol)
+/// Chuyển đổi giá -> điểm (tự động theo số digit của symbol)
 double PriceToPoints(double price_value) {
     return price_value / _Point;
 }
 
-/// Chuyen doi diem -> gia (tu dong theo so digit cua symbol)
+/// Chuyển đổi điểm -> giá (tự động theo số digit của symbol)
 double PointsToPrice(double points_value) {
     return points_value * _Point;
 }
 
-/// Lay stop level broker theo don vi GIA
+/// Lấy stop level broker theo đơn vị GIÁ
 double GetBrokerStopLevelPrice(){
    long stopPts = SymbolInfoInteger(_Symbol, SYMBOL_TRADE_STOPS_LEVEL);
    return PointsToPrice((double)stopPts);
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 9 — TELEGRAM NOTIFICATION SYSTEM                           |
-//|                                                                  |
+//|  PEAK TRACKING — theo dõi lợi nhuận cao nhất từng position      |
 //+------------------------------------------------------------------+
 
-/// URL encode UTF-8: ho tro ky tu tieng Viet (Phan 9.3)
+int PeakIdx(ulong tkt) {
+    for(int i = 0; i < g_peakCnt; i++)
+        if(g_peakTkt[i] == tkt) return i;
+    return -1;
+}
+
+double PeakGet(ulong tkt) {
+    int i = PeakIdx(tkt);
+    return (i >= 0) ? g_peakPnl[i] : 0.0;
+}
+
+void PeakSet(ulong tkt, double val) {
+    int i = PeakIdx(tkt);
+    if(i >= 0) { g_peakPnl[i] = val; return; }
+    if(g_peakCnt < MAX_TRACKED) {
+        g_peakTkt[g_peakCnt] = tkt;
+        g_peakPnl[g_peakCnt] = val;
+        g_peakCnt++;
+    }
+}
+
+void PeakRemove(ulong tkt) {
+    int i = PeakIdx(tkt);
+    if(i < 0) return;
+    g_peakCnt--;
+    g_peakTkt[i] = g_peakTkt[g_peakCnt];
+    g_peakPnl[i] = g_peakPnl[g_peakCnt];
+}
+
+//+------------------------------------------------------------------+
+//|  CALC LOCK LEVEL — tính mức SL lock dựa trên peak profit        |
+//|  Trả về: >= 0 = mức lock (tính từ entry)                        |
+//|          -1.0 = chưa có tier nào kích hoạt                      |
+//+------------------------------------------------------------------+
+
+double CalcLockLevel(double peak) {
+    if(InpT6Trigger > 0 && peak >= InpT6Trigger) return InpT6Lock;
+    if(InpT5Trigger > 0 && peak >= InpT5Trigger) return InpT5Lock;
+    if(InpT4Trigger > 0 && peak >= InpT4Trigger) return InpT4Lock;
+    if(InpT3Trigger > 0 && peak >= InpT3Trigger) return InpT3Lock;
+    if(InpT2Trigger > 0 && peak >= InpT2Trigger) return InpT2Lock;
+    if(InpT1Trigger > 0 && peak >= InpT1Trigger) return peak - InpT1Trail; // dynamic trail
+    return -1.0;
+}
+
+//+------------------------------------------------------------------+
+//|  TELEGRAM NOTIFICATION SYSTEM                                    |
+//+------------------------------------------------------------------+
+
+/// URL encode UTF-8: hỗ trợ ký tự tiếng Việt
 string UrlEncode(string text) {
     string result = "";
     uchar  utf8[];
-    // Convert string -> UTF-8 bytes
     StringToCharArray(text, utf8, 0, WHOLE_ARRAY, CP_UTF8);
     int uLen = ArraySize(utf8);
     for(int i = 0; i < uLen - 1; i++) {
-        // bo null terminator cuoi
+        // bỏ null terminator cuối
         uchar c = utf8[i];
         if((c >= 'A' && c <= 'Z') ||
             (c >= 'a' && c <= 'z') ||
@@ -238,13 +305,13 @@ string UrlEncode(string text) {
 
 datetime g_lastTelegramTime = 0;
 
-/// Gui message qua Telegram WebRequest (Phan 9.2)
+/// Gửi message qua Telegram WebRequest
 bool SendTelegram(string text) {
     if(!InpEnableTelegram) return false;
     if(StringLen(InpTelegramToken) < 20) {
         return false;
     }
-    // Rate limit: 1 msg/giay
+    // Rate limit: 1 msg/giây
     if(TimeCurrent() - g_lastTelegramTime < 1)
         Sleep(1000);
     string url     = "https://api.telegram.org/bot" + InpTelegramToken + "/sendMessage";
@@ -259,45 +326,49 @@ bool SendTelegram(string text) {
     g_lastTelegramTime = TimeCurrent();
     if(httpCode == -1) {
         int err = GetLastError();
-        
-            return false;
-    } if(httpCode == 429) {
-        Sleep(1000);
-        return SendTelegram(text);  // retry 1 lan
+        return false;
     }
-    if(httpCode != 200){
+    if(httpCode == 429) {
+        Sleep(1000);
+        return SendTelegram(text);  // retry 1 lần
+    }
+    if(httpCode != 200) {
         return false;
     }
     return true;
 }
 
-// --- 11 loai event notification (Phan 9.4) ---
-
 void NotifyStart() {
     SendTelegram(StringFormat(
-        "KHOI DONG: %s v%s\nSymbol: %s | Lot: %.2f\nSL: %.1f | TP: %.1f | Straddle: %.1f",
-        EA_NAME, EA_VERSION, _Symbol, InpLotSize, InpStopLoss, InpTakeProfit, InpStraddleDist));
+        "KHỞI ĐỘNG: %s v%s\nSymbol: %s | Lot: %.2f | SL: %.1f | Straddle: %.1f\n"
+        "Trailing T1: đạt %.1f -> trail %.1f\n"
+        "T2: %.1f->%.1f | T3: %.1f->%.1f\n"
+        "T4: %.1f->%.1f | T5: %.1f->%.1f | T6: %.1f->%.1f",
+        EA_NAME, EA_VERSION, _Symbol, InpLotSize, InpStopLoss, InpStraddleDist,
+        InpT1Trigger, InpT1Trail,
+        InpT2Trigger, InpT2Lock, InpT3Trigger, InpT3Lock,
+        InpT4Trigger, InpT4Lock, InpT5Trigger, InpT5Lock, InpT6Trigger, InpT6Lock));
 }
 
 void NotifyStop(string reason) {
-    SendTelegram(StringFormat("DUNG: %s\nLy do: %s", EA_NAME, reason));
+    SendTelegram(StringFormat("DỪNG: %s\nLý do: %s", EA_NAME, reason));
 }
 
 void NotifyStraddleSetup(double buyPx, double sellPx) {
     if(!InpNotifyEntry) return;
     SendTelegram(StringFormat(
-        "STRADDLE DAT OK\nBuy Stop: %.2f | Sell Stop: %.2f\nSL: %.1f | TP: %.1f",
-        buyPx, sellPx, InpStopLoss, InpTakeProfit));
+        "STRADDLE ĐẶT OK\nBuy Stop: %.2f | Sell Stop: %.2f\nSL: %.1f | Trailing 6-tier active",
+        buyPx, sellPx, InpStopLoss));
 }
 
 void NotifyCloseTP(ulong posId, double profit) {
     if(!InpNotifyExit) return;
-    SendTelegram(StringFormat("TP HIT - Pos #%llu\nLai: +%.2f USD", posId, profit));
+    SendTelegram(StringFormat("ĐÓNG LÃI - Pos #%llu\nLãi: +%.2f USD", posId, profit));
 }
 
 void NotifyCloseSL(ulong posId, double loss) {
     if(!InpNotifyExit) return;
-    SendTelegram(StringFormat("SL HIT - Pos #%llu\nLo: %.2f USD", posId, loss));
+    SendTelegram(StringFormat("SL HIT - Pos #%llu\nLỗ: %.2f USD", posId, loss));
 }
 
 void NotifyResetSetup(double buyPx, double sellPx) {
@@ -307,16 +378,16 @@ void NotifyResetSetup(double buyPx, double sellPx) {
 
 void NotifyPause(int streak) {
     SendTelegram(StringFormat(
-        "EA TAM DUNG\n%d lenh thua lien tiep -> pause %d phut", streak, InpPauseMinutes));
+        "EA TẠM DỪNG\n%d lệnh thua liên tiếp -> pause %d phút", streak, InpPauseMinutes));
 }
 
 void NotifyResume() {
-    SendTelegram("EA TIEP TUC - Het thoi gian pause");
+    SendTelegram("EA TIẾP TỤC - Hết thời gian pause");
 }
 
 void NotifyDailyLimitHit(double pct) {
     SendTelegram(StringFormat(
-        "DAILY LIMIT HIT\nDa lo %.1f%% equity ngay -> EA dung den nua dem", pct));
+        "DAILY LIMIT HIT\nĐã lỗ %.1f%% equity ngày -> EA dừng đến nửa đêm", pct));
 }
 
 void NotifyDailySummary() {
@@ -325,23 +396,21 @@ void NotifyDailySummary() {
     double pf = (g_grossLoss  != 0) ? (g_grossProfit / MathAbs(g_grossLoss)) : 0.0;
     double net = g_grossProfit + g_grossLoss;
     SendTelegram(StringFormat(
-        "TONG KET NGAY\nTrades: %d | W: %d | L: %d\nWin Rate: %.1f%% | PF: %.2f\nNet PL: %.2f USD\nMax DD: %.2f USD\nFilter rejects: T=%lld R=%lld S=%lld ATR=%lld ADX=%lld",
+        "TỔNG KẾT NGÀY\nTrades: %d | W: %d | L: %d\nWin Rate: %.1f%% | PF: %.2f\nNet PL: %.2f USD\nMax DD: %.2f USD\nFilter rejects: T=%lld R=%lld S=%lld ATR=%lld ADX=%lld",
         g_totalTrades, g_totalWins, g_totalLosses,
         wr, pf, net, g_maxDDIntraday,
         g_rejTime, g_rejRoll, g_rejSpread, g_rejATR, g_rejADX));
 }
 
 void NotifyErrorAlert(string msg) {
-    SendTelegram("LOI NGHIEM TRONG\n" + msg);
+    SendTelegram("LỖI NGHIÊM TRỌNG\n" + msg);
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 6 — HE THONG LOC 5 TANG (Short-circuit)                    |
-//|                                                                  |
+//|  HỆ THỐNG LỌC 5 TẦNG (Short-circuit)                            |
 //+------------------------------------------------------------------+
 
-/// Filter 1: Khung thoi gian (Phan 6.1)
+/// Filter 1: Khung thời gian
 bool IsInTradingHour() {
     MqlDateTime now;
     TimeToStruct(TimeCurrent(), now);
@@ -357,24 +426,23 @@ bool IsInTradingHour() {
     return true;
 }
 
-/// Filter 2: Rollover window (Phan 6.2)
+/// Filter 2: Rollover window
 bool IsInRolloverWindow() {
     MqlDateTime now;
     TimeToStruct(TimeCurrent(), now);
     int curMin   = now.hour * 60 + now.min;
     int startMin = (InpRolloverStartH - InTimeGMT) * 60 + InpRolloverStartM;
     int endMin   = (InpRolloverEndH - InTimeGMT)  * 60 + InpRolloverEndM;
-
     return (curMin >= startMin && curMin <= endMin);
 }
 
-/// Filter 3: Spread (Phan 6.3)
+/// Filter 3: Spread
 bool IsSpreadOK() {
     int spread = (int)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
     return (spread <= InpMaxSpreadPts);
 }
 
-/// Filter 4: ATR bien dong (Phan 6.4)
+/// Filter 4: ATR biến động
 double GetATR() {
     double buf[];
     if(CopyBuffer(g_handleATR, 0, 0, 1, buf) != 1) return 0.0;
@@ -387,7 +455,7 @@ bool IsATROK() {
     return (atr >= InpATRMin && atr <= InpATRMax);
 }
 
-/// Filter 5: ADX do manh xu huong (Phan 6.5)
+/// Filter 5: ADX đo mạnh xu hướng
 double GetADX() {
     double buf[];
     // Buffer 0 = ADX main line (MODE_MAIN)
@@ -398,11 +466,11 @@ double GetADX() {
 bool IsADXOK() {
     double adx = GetADX();
     if(adx <= 0.0) return false;
-    // Exclusive bounds: NGHIEM NGAT > min VA < max
+    // Exclusive bounds: NGHIÊM NGẶT > min VÀ < max
     return (adx > InpADXMin && adx < InpADXMax);
 }
 
-/// Danh gia tat ca 5 filter theo thu tu, short-circuit khi fail (Phan 6)
+/// Đánh giá tất cả 5 filter theo thứ tự, short-circuit khi fail
 bool AllFiltersPass() {
     if(!IsInTradingHour())     { g_rejTime++;   return false; }
     if(IsInRolloverWindow())   { g_rejRoll++;   return false; }
@@ -413,59 +481,51 @@ bool AllFiltersPass() {
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 4 — TRAILING STOP PHAN TANG (7 tang)                     |
-//|                                                                  |
+//|  TRAILING STOP PHÂN TẦNG (6 tầng)                               |
 //+------------------------------------------------------------------+
 
-/// Tinh offset SL moi tu entry theo 7 tang lai (Phan 4.2)
-double CalculateTrailingLockOffset(double profit) {
-    if(profit < 3.0)   return 0.0;            // Tier 0: chua kich hoat
-    if(profit < 4.0)   return 2.0;            // Tier 1: lock +2.0 (67%)
-    if(profit < 5.0)   return 2.5;            // Tier 2: lock +2.5 (62.5%)
-    if(profit <= 10.0) return profit * 0.70;  // Tier 3: 70%
-    if(profit <= 20.0) return profit * 0.80;  // Tier 4: 80%
-    if(profit <= 30.0) return profit * 0.85;  // Tier 5: 85%
-    return profit * 0.90;                     // Tier 6: 90%
-}
-
-/// Ap dung trailing cho 1 position (Phan 4.2, 4.3)
+/// Áp dụng trailing 6-tier cho 1 position
 void ApplyTrailing(ulong ticket) {
     if(!InpEnableTrailing) return;
     if(!g_posInfo.SelectByTicket(ticket)) return;
     if(g_posInfo.Magic() != InpMagicNumber) return;
     if(g_posInfo.Symbol() != _Symbol) return;
-    
+
     double entry = g_posInfo.PriceOpen();
     double curSL = g_posInfo.StopLoss();
-    double curTP = g_posInfo.TakeProfit();
     ENUM_POSITION_TYPE pType = g_posInfo.PositionType();
-    // Tinh loi nhuan noi theo don vi GIA
+
     double mktPx = (pType == POSITION_TYPE_BUY)
                     ? SymbolInfoDouble(_Symbol, SYMBOL_BID)
                     : SymbolInfoDouble(_Symbol, SYMBOL_ASK);
     double profit = (pType == POSITION_TYPE_BUY)
                     ? (mktPx - entry)
                     : (entry - mktPx);
-    double offset = CalculateTrailingLockOffset(profit);
-    if(offset == 0.0) return;
+
+    // Cập nhật peak profit cho ticket này
+    double peak = PeakGet(ticket);
+    if(profit > peak) { peak = profit; PeakSet(ticket, peak); }
+
+    double lockLevel = CalcLockLevel(peak);
+    if(lockLevel < 0.0) return; // chưa có tier nào kích hoạt
+
     double newSL = (pType == POSITION_TYPE_BUY)
-                    ? NormalizeDouble(entry + offset, _Digits)
-                    : NormalizeDouble(entry - offset, _Digits);
-    // CHI modify khi SL moi TOT HON NGHIEM NGAT SL hien tai (tranh float error)
+                    ? NormalizeDouble(entry + lockLevel, _Digits)
+                    : NormalizeDouble(entry - lockLevel, _Digits);
+
+    // Chỉ modify khi SL mới tốt hơn SL hiện tại (chỉ đi 1 chiều)
     bool shouldModify = false;
     if(pType == POSITION_TYPE_BUY  && newSL > curSL + _Point) shouldModify = true;
     if(pType == POSITION_TYPE_SELL && newSL < curSL - _Point) shouldModify = true;
     if(!shouldModify) return;
-    // Rate limit: toi da 1 modify/giay
+
+    // Rate limit: tối đa 1 modify/giây
     if(TimeCurrent() - g_lastTrailTime < TRAIL_RATE_LIMIT_S) return;
-    if(g_trade.PositionModify(ticket, newSL, curTP)) {
-        
+    if(g_trade.PositionModify(ticket, newSL, 0))
         g_lastTrailTime = TimeCurrent();
-    }
 }
 
-/// Ap dung trailing cho tat ca position dang mo
+/// Áp dụng trailing cho tất cả position đang mở
 void ManageTrailing() {
     for(int i = PositionsTotal() - 1; i >= 0; i--) {
         if(g_posInfo.SelectByIndex(i) &&
@@ -484,9 +544,8 @@ int CountMyPositions() {
     for(int i = PositionsTotal() - 1; i >= 0; i--)
         if(g_posInfo.SelectByIndex(i) &&
             g_posInfo.Magic() == InpMagicNumber &&
-            g_posInfo.Symbol() == _Symbol) 
+            g_posInfo.Symbol() == _Symbol)
         cnt++;
-    
     return cnt;
 }
 
@@ -495,9 +554,8 @@ int CountMyPendingOrders() {
     for(int i = OrdersTotal() - 1; i >= 0; i--)
         if(g_orderInfo.SelectByIndex(i) &&
             g_orderInfo.Magic() == InpMagicNumber &&
-            g_orderInfo.Symbol() == _Symbol) 
+            g_orderInfo.Symbol() == _Symbol)
         cnt++;
-    
     return cnt;
 }
 
@@ -526,20 +584,18 @@ void CancelAllPendingOrders() {
     }
 }
 
-/// Huy 1 pending order, co retry (Phan 3.4 — chong orphan)
+/// Hủy 1 pending order, có retry (chống orphan)
 bool CancelOrderSafe(ulong ticket) {
     for(int attempt = 0; attempt < 2; attempt++) {
         if(g_trade.OrderDelete(ticket)) return true;
         Sleep(RETRY_DELAY_MS);
     }
-    NotifyErrorAlert(StringFormat("ORPHAN — Khong huy duoc order #%llu!", ticket));
+    NotifyErrorAlert(StringFormat("ORPHAN — Không hủy được order #%llu!", ticket));
     return false;
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 7.5 — MARGIN CHECK                                        |
-//|                                                                  |
+//|  MARGIN CHECK                                                    |
 //+------------------------------------------------------------------+
 
 bool HasSufficientMargin() {
@@ -552,14 +608,11 @@ bool HasSufficientMargin() {
     if(freeMgn < mgnReq * MARGIN_SAFETY_FACTOR) {
         return false;
     }
-    
     return true;
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 8.5 — BROKER ERROR HANDLING                               |
-//|                                                                  |
+//|  BROKER ERROR HANDLING                                           |
 //+------------------------------------------------------------------+
 
 bool HandleRetcode(uint retcode, string ctx) {
@@ -572,7 +625,7 @@ bool HandleRetcode(uint retcode, string ctx) {
             Sleep(RETRY_DELAY_MS);
             return false;
         case TRADE_RETCODE_NO_MONEY:
-            NotifyErrorAlert(ctx + ": Tai khoan khong du margin!");
+            NotifyErrorAlert(ctx + ": Tài khoản không đủ margin!");
             return false;
         case TRADE_RETCODE_INVALID_STOPS:
             return false;
@@ -584,50 +637,47 @@ bool HandleRetcode(uint retcode, string ctx) {
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 3 — LOGIC VAO LENH (DAT STRADDLE) — ATOMIC               |
-//|                                                                  |
+//|  LOGIC VÀO LỆNH (ĐẶT STRADDLE) — ATOMIC                        |
 //+------------------------------------------------------------------+
 
-/// Dat straddle nguyen tu (Buy Stop + Sell Stop) (Phan 3.2, 3.4)
-/// isReset: true = straddle reset sau SL (Phan 5)
+/// Đặt straddle nguyên tử (Buy Stop + Sell Stop)
+/// isReset: true = straddle reset sau SL
 bool PlaceStraddle(bool isReset, double resetAtPrice) {
-    //--- Throttle chong spam (Phan 3.5) ---
+    //--- Throttle chống spam ---
     if(!isReset) {
         if(TimeCurrent() - g_lastStraddleTime < STRADDLE_THROTTLE_S)
             return false;
-        
+
         if(TimeCurrent() - g_straddleMinStart < 60){
             g_straddleInMin++;
             if(g_straddleInMin > MAX_STRADDLE_PER_MIN) {
-                NotifyErrorAlert("Phat hien spam straddle — tu dong pause");
+                NotifyErrorAlert("Phát hiện spam straddle — tự động pause");
                 g_pauseUntil = TimeCurrent() + InpPauseMinutes * 60;
                 g_state      = STATE_PAUSED;
                 CancelAllPendingOrders();
                 return false;
             }
         } else {
-            g_straddleInMin  = 1;
+            g_straddleInMin    = 1;
             g_straddleMinStart = TimeCurrent();
         }
     }
     g_lastStraddleTime = TimeCurrent();
 
-    //--- Refresh rates va validate tick (Phan 8.4) ---
+    //--- Refresh rates và validate tick ---
     if(!g_symInfo.RefreshRates()) return false;
     double bid = g_symInfo.Bid();
     double ask = g_symInfo.Ask();
     if(bid <= 0 || ask <= 0 || ask <= bid) return false;
 
-    //--- Tinh gia dat lenh (Phan 3.2) ---
+    //--- Tính giá đặt lệnh ---
     double stopLvlPx = GetBrokerStopLevelPrice();
-    double minDist   = stopLvlPx * 1.1;  // +10% buffer (Phan 8.6)
+    double minDist   = stopLvlPx * 1.1;  // +10% buffer
     double buyPx, sellPx;
     if(isReset && resetAtPrice > 0.0) {
         buyPx  = resetAtPrice + InpStraddleDist;
         sellPx = resetAtPrice - InpStraddleDist;
-        // Fallback: neu gia SL qua xa thi truong (Phan 5.3)
-        
+        // Fallback: nếu giá SL quá xa thị trường
         if(MathAbs(buyPx - ask) < stopLvlPx || MathAbs(sellPx - bid) < stopLvlPx) {
             buyPx  = ask + InpStraddleDist;
             sellPx = bid - InpStraddleDist;
@@ -636,73 +686,57 @@ bool PlaceStraddle(bool isReset, double resetAtPrice) {
         buyPx  = ask + InpStraddleDist;
         sellPx = bid - InpStraddleDist;
     }
-    
-    // Adjust neu vi pham stop level (Phan 8.6)
-    if(buyPx - ask < minDist) {
+
+    // Adjust nếu vi phạm stop level
+    if(buyPx - ask < minDist)
         buyPx = NormalizeDouble(ask + minDist, _Digits);
-    }
-    
-    if(bid - sellPx < minDist) {
+    if(bid - sellPx < minDist)
         sellPx = NormalizeDouble(bid - minDist, _Digits);
-    }
-    
+
     buyPx  = NormalizeDouble(buyPx,  _Digits);
     sellPx = NormalizeDouble(sellPx, _Digits);
 
-    //--- SL va TP (server-side) (Phan 4.1) ---
-    double sl_buy  = NormalizeDouble(buyPx  - InpStopLoss,   _Digits);
-    double tp_buy  = NormalizeDouble(buyPx  + InpTakeProfit, _Digits);
-    double sl_sell = NormalizeDouble(sellPx + InpStopLoss,   _Digits);
-    double tp_sell = NormalizeDouble(sellPx - InpTakeProfit, _Digits);
+    //--- SL server-side, TP = 0 (quản lý bởi trailing tier) ---
+    double sl_buy  = NormalizeDouble(buyPx  - InpStopLoss, _Digits);
+    double sl_sell = NormalizeDouble(sellPx + InpStopLoss, _Digits);
 
-    //--- Comment (Phan 3.3, 5.4) ---
     string sfx   = isReset ? "_R" : "";
     string cBuy  = InpComment + "_BUY"  + sfx;
     string cSell = InpComment + "_SELL" + sfx;
 
-    //--- Trade setup (Phan 3.3) ---
     g_trade.SetExpertMagicNumber(InpMagicNumber);
     g_trade.SetDeviationInPoints(20);
     g_trade.SetTypeFilling(ORDER_FILLING_RETURN);
 
-    //--- DAT BUY STOP ---
+    //--- Đặt BUY STOP ---
     bool  buyOK  = false;
     ulong buyTkt = 0;
     for(int att = 0; att < MAX_RETRY_COUNT; att++) {
-        buyOK = g_trade.BuyStop(InpLotSize, buyPx, _Symbol, sl_buy, tp_buy,
+        buyOK = g_trade.BuyStop(InpLotSize, buyPx, _Symbol, sl_buy, 0,
                               ORDER_TIME_GTC, 0, cBuy);
-        if(buyOK) { 
-            buyTkt = g_trade.ResultOrder(); 
-            break; 
-        }
-
+        if(buyOK) { buyTkt = g_trade.ResultOrder(); break; }
         if(!HandleRetcode(g_trade.ResultRetcode(), "BuyStop")) break;
     }
-
     if(!buyOK || buyTkt == 0) return false;
 
-    //--- DAT SELL STOP ---
+    //--- Đặt SELL STOP ---
     bool  sellOK  = false;
     ulong sellTkt = 0;
     for(int att = 0; att < MAX_RETRY_COUNT; att++) {
-        sellOK = g_trade.SellStop(InpLotSize, sellPx, _Symbol, sl_sell, tp_sell,
+        sellOK = g_trade.SellStop(InpLotSize, sellPx, _Symbol, sl_sell, 0,
                                     ORDER_TIME_GTC, 0, cSell);
-        if(sellOK) { 
-            sellTkt = g_trade.ResultOrder(); 
-            break; 
-        }
-        
+        if(sellOK) { sellTkt = g_trade.ResultOrder(); break; }
         if(!HandleRetcode(g_trade.ResultRetcode(), "SellStop")) break;
     }
 
-    //--- ATOMICITY: neu SellStop that bai, ROLLBACK BuyStop (Phan 3.4) ---
+    //--- ATOMICITY: nếu SellStop thất bại, ROLLBACK BuyStop ---
     if(!sellOK || sellTkt == 0) {
         if(!CancelOrderSafe(buyTkt))
-            NotifyErrorAlert(StringFormat("ORPHAN BuyStop #%llu — can kiem tra thu cong!", buyTkt));
+            NotifyErrorAlert(StringFormat("ORPHAN BuyStop #%llu — cần kiểm tra thủ công!", buyTkt));
         return false;
     }
 
-    //--- Luu tracking ---
+    //--- Lưu tracking ---
     g_pendingBuyTkt  = buyTkt;
     g_pendingSellTkt = sellTkt;
     g_pendingBuyPx   = buyPx;
@@ -713,14 +747,12 @@ bool PlaceStraddle(bool isReset, double resetAtPrice) {
     else
         NotifyStraddleSetup(buyPx, sellPx);
 
-   g_state = STATE_WAITING;
-   return true;
+    g_state = STATE_WAITING;
+    return true;
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 5 — LOGIC RESET                                           |
-//|                                                                  |
+//|  LOGIC RESET                                                     |
 //+------------------------------------------------------------------+
 
 void TryReset(double slHitPrice) {
@@ -736,9 +768,7 @@ void TryReset(double slHitPrice) {
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 7 — QUAN LY RUI RO                                        |
-//|                                                                  |
+//|  QUẢN LÝ RỦI RO                                                 |
 //+------------------------------------------------------------------+
 
 void CheckNewDay() {
@@ -765,7 +795,7 @@ void CheckNewDay() {
     g_rejADX           = 0;
 }
 
-/// Cap nhat max drawdown intraday
+/// Cập nhật max drawdown intraday
 void UpdateIntradayDD() {
     double eq = AccountInfoDouble(ACCOUNT_EQUITY);
     if(eq > g_peakEquityToday) g_peakEquityToday = eq;
@@ -773,19 +803,19 @@ void UpdateIntradayDD() {
     if(dd > g_maxDDIntraday) g_maxDDIntraday = dd;
 }
 
-/// Kiem tra daily loss limit (Phan 7.1)
+/// Kiểm tra daily loss limit
 void CheckDailyLossLimit() {
     if(g_dailyLimitHit || g_dayStartEquity <= 0) return;
-    
-    double eq   = AccountInfoDouble(ACCOUNT_EQUITY);
-    double totalDD    = g_dayStartEquity - eq;
+
+    double eq        = AccountInfoDouble(ACCOUNT_EQUITY);
+    double totalDD   = g_dayStartEquity - eq;
     double totalDDPct = (totalDD / g_dayStartEquity) * 100.0;
-    // Force-close neu total drawdown (da chot + floating) > 20% (Phan 7.1)
+    // Force-close nếu total drawdown (đã chốt + floating) > 20%
     if(totalDDPct >= FORCE_CLOSE_PCT) {
         CloseAllPositions("ForceClose DD>20%");
         CancelAllPendingOrders();
     }
-    
+
     if(g_todayProfit >= 0) return;
     double lossPct = (-g_todayProfit / g_dayStartEquity) * 100.0;
     if(lossPct >= InpDailyLossPct) {
@@ -797,7 +827,7 @@ void CheckDailyLossLimit() {
     }
 }
 
-/// Cap nhat loss streak va stats sau khi trade dong (Phan 7.2)
+/// Cập nhật loss streak và stats sau khi trade đóng
 void UpdateAfterTrade(double closedPL) {
     g_totalTrades++;
     if(closedPL > 0) {
@@ -821,7 +851,7 @@ void UpdateAfterTrade(double closedPL) {
     CheckDailyLossLimit();
 }
 
-/// Kiem tra va xu ly khi pause het han (Phan 7.2)
+/// Kiểm tra và xử lý khi pause hết hạn
 void CheckPauseExpiry() {
     if(g_state != STATE_PAUSED) return;
     if(g_pauseUntil > 0 && TimeCurrent() >= g_pauseUntil) {
@@ -831,7 +861,7 @@ void CheckPauseExpiry() {
     }
 }
 
-/// Kiem tra EOD close (Phan 7.3)
+/// Kiểm tra EOD close
 bool IsEODClose() {
     MqlDateTime now;
     TimeToStruct(TimeCurrent(), now);
@@ -844,16 +874,14 @@ bool IsEODClose() {
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 8 — SPECIAL CASES & ERROR HANDLING                        |
-//|                                                                  |
+//|  SPECIAL CASES & ERROR HANDLING                                  |
 //+------------------------------------------------------------------+
 
-/// Kiem tra orphan order (Phan 8.2): sau ORPHAN_CHECK_S giay, huy leg con lai
+/// Kiểm tra orphan order: sau ORPHAN_CHECK_S giây, hủy leg còn lại
 void CheckOrphanOrder() {
     if(g_lastFillTime == 0) return;
     if(TimeCurrent() - g_lastFillTime < (datetime)ORPHAN_CHECK_S) return;
-    // Tim pending order con lai cua EA ma khong phai pos da fill
+    // Tìm pending order còn lại của EA mà không phải pos đã fill
     for(int i = OrdersTotal() - 1; i >= 0; i--) {
         if(g_orderInfo.SelectByIndex(i) &&
             g_orderInfo.Magic() == InpMagicNumber &&
@@ -866,7 +894,7 @@ void CheckOrphanOrder() {
     g_filledPosId  = 0;
 }
 
-/// Validate tick (Phan 8.4)
+/// Validate tick
 bool ValidateTick() {
     if(!g_symInfo.RefreshRates()) return false;
     if(g_symInfo.Bid() == 0.0 || g_symInfo.Ask() == 0.0) return false;
@@ -877,9 +905,7 @@ bool ValidateTick() {
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 11.13 — INPUT VALIDATION                                  |
-//|                                                                  |
+//|  INPUT VALIDATION                                                |
 //+------------------------------------------------------------------+
 
 bool ValidateInputs() {
@@ -887,44 +913,55 @@ bool ValidateInputs() {
     double volMin = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MIN);
     double volMax = SymbolInfoDouble(_Symbol, SYMBOL_VOLUME_MAX);
     if(InpLotSize < volMin || InpLotSize > volMax) {
-      Print("INPUT ERROR: InpLotSize=", InpLotSize, " phai trong [", volMin, ", ", volMax, "]");
-      ok = false;
+        Print("INPUT ERROR: InpLotSize=", InpLotSize, " phải trong [", volMin, ", ", volMax, "]");
+        ok = false;
     }
     if(InpStopLoss <= 0)
-        { Print("INPUT ERROR: InpStopLoss phai > 0"); ok = false; }
-    if(InpTakeProfit <= InpStopLoss)
-        { Print("INPUT ERROR: InpTakeProfit phai > InpStopLoss (RR >= 1)"); ok = false; }
+        { Print("INPUT ERROR: InpStopLoss phải > 0"); ok = false; }
     if(InpStraddleDist <= 0)
-        { Print("INPUT ERROR: InpStraddleDist phai > 0"); ok = false; }
+        { Print("INPUT ERROR: InpStraddleDist phải > 0"); ok = false; }
+    // Validate trailing tiers
+    if(InpT1Trigger <= 0 || InpT1Trail <= 0 || InpT1Trail >= InpT1Trigger)
+        { Print("INPUT ERROR: T1 — Trigger phải > 0, Trail phải > 0 và < Trigger"); ok = false; }
+    if(InpT2Trigger > 0 && InpT2Trigger <= InpT1Trigger)
+        { Print("INPUT ERROR: T2Trigger phải > T1Trigger"); ok = false; }
+    if(InpT3Trigger > 0 && InpT3Trigger <= InpT2Trigger)
+        { Print("INPUT ERROR: T3Trigger phải > T2Trigger"); ok = false; }
+    if(InpT4Trigger > 0 && InpT4Trigger <= InpT3Trigger)
+        { Print("INPUT ERROR: T4Trigger phải > T3Trigger"); ok = false; }
+    if(InpT5Trigger > 0 && InpT5Trigger <= InpT4Trigger)
+        { Print("INPUT ERROR: T5Trigger phải > T4Trigger"); ok = false; }
+    if(InpT6Trigger > 0 && InpT6Trigger <= InpT5Trigger)
+        { Print("INPUT ERROR: T6Trigger phải > T5Trigger"); ok = false; }
     if(InpATRMin >= InpATRMax)
-        { Print("INPUT ERROR: InpATRMin phai < InpATRMax"); ok = false; }
+        { Print("INPUT ERROR: InpATRMin phải < InpATRMax"); ok = false; }
     if(InpADXMin >= InpADXMax || InpADXMin < 0 || InpADXMax > 100)
-        { Print("INPUT ERROR: ADX range khong hop le"); ok = false; }
+        { Print("INPUT ERROR: ADX range không hợp lệ"); ok = false; }
     if(InpDailyLossPct <= 0 || InpDailyLossPct >= 100)
-        { Print("INPUT ERROR: InpDailyLossPct phai trong (0, 100)"); ok = false; }
+        { Print("INPUT ERROR: InpDailyLossPct phải trong (0, 100)"); ok = false; }
     if(InpStartHour >= InpEndHour || InpStartHour < 0 || InpEndHour > 23)
-        { Print("INPUT ERROR: StartHour/EndHour khong hop le"); ok = false; }
+        { Print("INPUT ERROR: StartHour/EndHour không hợp lệ"); ok = false; }
     if(InpEnableTelegram && StringLen(InpTelegramToken) < 40)
-        { Print("INPUT WARN: Telegram bat nhung Token co ve khong du dai (< 40 ky tu)"); }
+        { Print("INPUT WARN: Telegram bật nhưng Token có vẻ không đủ dài (< 40 ký tự)"); }
     return ok;
 }
 
 //+------------------------------------------------------------------+
-//|  PHAN 8.7 — ACCOUNT TYPE VALIDATION                             |
+//|  ACCOUNT TYPE VALIDATION                                         |
 //+------------------------------------------------------------------+
 
 void ValidateAccountType() {
     long mode = AccountInfoInteger(ACCOUNT_TRADE_MODE);
     if(mode == ACCOUNT_TRADE_MODE_CONTEST)
-        Print("CONTEST account — mot so tinh nang co the bi gioi han");
+        Print("CONTEST account — một số tính năng có thể bị giới hạn");
     else if(mode == ACCOUNT_TRADE_MODE_DEMO)
-        Print("DEMO account — EA dang chay tren tai khoan demo");
+        Print("DEMO account — EA đang chạy trên tài khoản demo");
     else
-        Print("REAL account — EA dang chay tren tai khoan that");
+        Print("REAL account — EA đang chạy trên tài khoản thật");
 }
 
 //+------------------------------------------------------------------+
-//|  PHAN 12.3 — STATE RECOVERY SAU RESTART                        |
+//|  STATE RECOVERY SAU RESTART                                      |
 //+------------------------------------------------------------------+
 
 void RecoverState() {
@@ -934,7 +971,7 @@ void RecoverState() {
     else if(ordCnt > 0) g_state = STATE_WAITING;
     else                g_state = STATE_IDLE;
 
-    // Recover loss streak tu lich su hom nay
+    // Recover loss streak từ lịch sử hôm nay
     MqlDateTime now;
     TimeToStruct(TimeCurrent(), now);
     datetime dayStart = StringToTime(StringFormat("%04d.%02d.%02d", now.year, now.mon, now.day));
@@ -949,7 +986,7 @@ void RecoverState() {
             if(de != DEAL_ENTRY_OUT) continue;
             double pl = HistoryDealGetDouble(dt, DEAL_PROFIT);
             if(pl < 0) streak++;
-            else { streak = 0; break; }  // thang cuoi -> reset streak
+            else { streak = 0; break; }  // thắng cuối -> reset streak
         }
         g_lossStreak = streak;
     } else {
@@ -958,7 +995,7 @@ void RecoverState() {
 }
 
 //+------------------------------------------------------------------+
-//|  TIMER TASKS — DAILY SUMMARY & HOUSEKEEPING                     |
+//|  DAILY SUMMARY & HOUSEKEEPING                                    |
 //+------------------------------------------------------------------+
 
 void CheckDailySummary() {
@@ -967,119 +1004,91 @@ void CheckDailySummary() {
     TimeToStruct(TimeCurrent(), now);
     if(now.hour == DAILY_SUMMARY_HOUR && now.min == DAILY_SUMMARY_MIN) {
         NotifyDailySummary();
-
         g_dailySummarySent = true;
     }
 }
 
 //+------------------------------------------------------------------+
-//|                                                                  |
-//|  PHAN 12.2 — MAIN EVENT HANDLERS                                |
-//|                                                                  |
+//|  MAIN EVENT HANDLERS                                             |
 //+------------------------------------------------------------------+
 
 int OnInit() {
-    //--- Validate inputs (Phan 11.13) ---
     if(!ValidateInputs())
         return INIT_PARAMETERS_INCORRECT;
-    
-    int x = (int)ChartGetInteger(0, CHART_WIDTH_IN_PIXELS) - Shift;
 
-    if(!CreateLable(lblIsInTradingHour, "lblIsInTradingHour", "IsInTradingHour: ", x, 30))
-        return(INIT_FAILED);
-    if(!CreateLable(lblIsInRolloverWindow, "lblIsInRolloverWindow", "IsInRolloverWindow: ", x, 60))
-        return(INIT_FAILED);
-    if(!CreateLable(lblIsSpreadOK, "lblIsSpreadOK", "IsSpreadOK: ", x, 90))
-        return(INIT_FAILED);
-    if(!CreateLable(lblIsATROK, "lblIsATROK", "IsATROK: ", x, 120))
-        return(INIT_FAILED);
-    if(!CreateLable(lblIsADXOK, "lblIsADXOK", "lblIsADXOK: ", x, 150))
-        return(INIT_FAILED);
-        //--- Validate account type (Phan 8.7) ---
     ValidateAccountType();
-    //--- Symbol info setup ---
+
     if(!g_symInfo.Name(_Symbol)) {
-        Print("Loi khoi tao CSymbolInfo cho: ", _Symbol);
+        Print("Lỗi khởi tạo CSymbolInfo cho: ", _Symbol);
         return INIT_FAILED;
     }
 
-    //--- Trade object setup ---
     g_trade.SetExpertMagicNumber(InpMagicNumber);
     g_trade.SetDeviationInPoints(20);
 
-    //--- Khoi tao indicator handles (MOT LAN duy nhat — Phan 13.4) ---
+    //--- Khởi tạo indicator handles (một lần duy nhất) ---
     g_handleATR = iATR(_Symbol, InpATRTF, InpATRPeriod);
     if(g_handleATR == INVALID_HANDLE) {
-        Print("iATR init that bai — kiem tra lai ATR period/timeframe");
+        Print("iATR init thất bại — kiểm tra lại ATR period/timeframe");
         return INIT_FAILED;
     }
     g_handleADX = iADX(_Symbol, InpADXTF, InpADXPeriod);
     if(g_handleADX == INVALID_HANDLE) {
-        Print("iADX init that bai — kiem tra lai ADX period/timeframe");
+        Print("iADX init thất bại — kiểm tra lại ADX period/timeframe");
         return INIT_FAILED;
     }
 
-    //--- Timer 1 giay (Phan 12.2, 13.6) ---
     EventSetTimer(1);
 
-    //--- Equity baseline ---
     g_dayStartEquity  = AccountInfoDouble(ACCOUNT_EQUITY);
     g_peakEquityToday = g_dayStartEquity;
     MqlDateTime now;
     TimeToStruct(TimeCurrent(), now);
     g_lastDayChecked = StringToTime(StringFormat("%04d.%02d.%02d", now.year, now.mon, now.day));
 
-    //--- State recovery sau restart (Phan 12.3) ---
     RecoverState();
-
-    //--- Notify Telegram (Event #1) ---
     NotifyStart();
 
     return INIT_SUCCEEDED;
 }
 
 //+------------------------------------------------------------------+
-//| OnDeinit — Tat EA (Phan 12.2)                                   |
+//| OnDeinit — Tắt EA                                               |
 //+------------------------------------------------------------------+
 void OnDeinit(const int reason) {
-    //--- Release indicator handles (Phan 13.5) ---
     if(g_handleATR != INVALID_HANDLE) { IndicatorRelease(g_handleATR); g_handleATR = INVALID_HANDLE; }
     if(g_handleADX != INVALID_HANDLE) { IndicatorRelease(g_handleADX); g_handleADX = INVALID_HANDLE; }
-
-    //--- Kill timer ---
     EventKillTimer();
+    ObjectsDeleteAll(0, GUI);
 
-    //--- Determine reason string ---
     string rsn = "Code " + IntegerToString(reason);
     switch(reason) {
-        case REASON_REMOVE:     rsn = "EA bi xoa khoi chart"; break;
-        case REASON_RECOMPILE:  rsn = "Recompile";           break;
-        case REASON_CHARTCLOSE: rsn = "Chart dong";           break;
-        case REASON_ACCOUNT:    rsn = "Doi account";          break;
-        case REASON_INITFAILED: rsn = "Init that bai";        break;
-        case REASON_CLOSE:      rsn = "Terminal dong";        break;
+        case REASON_REMOVE:     rsn = "EA bị xóa khỏi chart"; break;
+        case REASON_RECOMPILE:  rsn = "Recompile";             break;
+        case REASON_CHARTCLOSE: rsn = "Chart đóng";            break;
+        case REASON_ACCOUNT:    rsn = "Đổi account";           break;
+        case REASON_INITFAILED: rsn = "Init thất bại";         break;
+        case REASON_CLOSE:      rsn = "Terminal đóng";         break;
     }
-
-    //--- Notify Telegram (Event #2) ---
     NotifyStop(rsn);
 }
 
 //+------------------------------------------------------------------+
-//| OnTick — Vong lap chinh (Phan 12.4 Flowchart)                  |
+//| OnTick — Vòng lặp chính                                         |
 //+------------------------------------------------------------------+
 void OnTick(){
-    //--- 1. Validate tick (Phan 8.4) ---
+    //--- 1. Validate tick ---
     if(!ValidateTick()) return;
 
-    //--- 2. Kiem tra ket noi broker (Phan 8.3) ---
+    //--- 2. Kiểm tra kết nối broker ---
     bool connected = (bool)TerminalInfoInteger(TERMINAL_CONNECTED);
     if(!connected) {
         if(g_state != STATE_DISCONNECTED) {
-            g_prevState      = g_state;
-            g_state          = STATE_DISCONNECTED;
+            g_prevState       = g_state;
+            g_state           = STATE_DISCONNECTED;
             g_disconnectStart = TimeCurrent();
         }
-        ManageTrailing();  // SL/TP phia server van active, trailing van chay
+        ManageTrailing();  // SL phía server vẫn active, trailing vẫn chạy
         return;
     }
     if(g_state == STATE_DISCONNECTED) {
@@ -1088,13 +1097,13 @@ void OnTick(){
         g_disconnectStart = 0;
     }
 
-    //--- 3. Kiem tra ngay moi (Phan 7.1) ---
+    //--- 3. Kiểm tra ngày mới ---
     CheckNewDay();
 
-    //--- 4. Cap nhat drawdown ---
+    //--- 4. Cập nhật drawdown ---
     UpdateIntradayDD();
 
-    //--- 5. EOD close? (Phan 7.3) ---
+    //--- 5. EOD close? ---
     if(IsEODClose()) {
         if(g_state != STATE_EOD_CLOSE) {
             g_state = STATE_EOD_CLOSE;
@@ -1111,21 +1120,21 @@ void OnTick(){
     //--- 7. Pause check ---
     CheckPauseExpiry();
 
-    //--- Trailing luon chay ke ca khi pause (neu co position) ---
+    //--- Trailing luôn chạy kể cả khi pause (nếu có position) ---
     ManageTrailing();
 
     if(g_state == STATE_PAUSED) return;
 
-    //--- 8. Kiem tra orphan order (Phan 8.2) ---
+    //--- 8. Kiểm tra orphan order ---
     CheckOrphanOrder();
 
-    //--- 9. Co position hoac pending? -> khong overlap (Phan 3.1) ---
+    //--- 9. Có position hoặc pending? -> không overlap ---
     if(CountMyPositions() > 0 || CountMyPendingOrders() > 0) {
         g_state = (CountMyPositions() > 0) ? STATE_POSITION : STATE_WAITING;
         return;
     }
 
-    //--- 10. Buffer 15 phut truoc EOD -> khong entry moi (Phan 3.1) ---
+    //--- 10. Buffer 15 phút trước EOD -> không entry mới ---
     MqlDateTime now;
     TimeToStruct(TimeCurrent(), now);
     int curMin = now.hour * 60 + now.min;
@@ -1134,47 +1143,42 @@ void OnTick(){
                 : ((InpEndHour - InTimeGMT) * 60 + InpEndMinute);
     if(curMin >= eodMin - EOD_BUFFER_MIN) return;
 
-    //--- 11. Check tat ca 5 filter (Phan 6) ---
+    //--- 11. Check tất cả 5 filter ---
     if(!AllFiltersPass()) { g_state = STATE_IDLE; return; }
 
-    //--- 12. Margin check (Phan 7.5) ---
+    //--- 12. Margin check ---
     if(!HasSufficientMargin()) return;
 
-    //--- 13. Dat straddle (Phan 3) ---
+    //--- 13. Đặt straddle ---
     g_state = STATE_PLACING;
     PlaceStraddle(false, 0.0);
 }
 
 //+------------------------------------------------------------------+
-//| OnTimer — Housekeeping moi giay (Phan 12.2, 13.6)              |
+//| OnTimer — Housekeeping mỗi giây                                 |
 //+------------------------------------------------------------------+
 void OnTimer() {
     CheckPauseExpiry();
     CheckDailySummary();
 
-    //--- Alert neu mat ket noi > 5 phut co position (Phan 8.3) ---
+    //--- Alert nếu mất kết nối > 5 phút có position ---
     if(g_disconnectStart > 0 &&
         TimeCurrent() - g_disconnectStart > DISCONNECT_ALERT_S &&
         CountMyPositions() > 0) {
-        NotifyErrorAlert(StringFormat("Mat ket noi > %d giay voi position dang mo!", DISCONNECT_ALERT_S));
-        g_disconnectStart = TimeCurrent();  // reset timer de khong spam
+        NotifyErrorAlert(StringFormat("Mất kết nối > %d giây với position đang mở!", DISCONNECT_ALERT_S));
+        g_disconnectStart = TimeCurrent();  // reset timer để không spam
     }
 
-    lblIsInTradingHour.Description("IsInTradingHour: " + (IsInTradingHour() ? "True" : "False"));
-    lblIsInRolloverWindow.Description("IsInRolloverWindow: " + (!IsInRolloverWindow() ? "True" : "False"));
-    lblIsSpreadOK.Description("IsSpreadOK: " + (IsSpreadOK() ? "True" : "False"));
-    lblIsATROK.Description("IsATROK: " + (IsATROK() ? "True" : "False"));
-    lblIsADXOK.Description("IsADXOK: " + (IsADXOK() ? "True" : "False"));
+    UpdateGUI();
 }
 
 //+------------------------------------------------------------------+
-//| OnTradeTransaction — Phat hien fill, close, cap nhat stats      |
-//| (Phan 4.4, 5, 7.2, 8.1, 8.2)                                   |
+//| OnTradeTransaction — Phát hiện fill, close, cập nhật stats      |
 //+------------------------------------------------------------------+
 void OnTradeTransaction(const MqlTradeTransaction& trans,
                         const MqlTradeRequest&     request,
                         const MqlTradeResult&      result){
-    //--- Chi xu ly DEAL_ADD (giao dich da thuc thi) ---
+    //--- Chỉ xử lý DEAL_ADD (giao dịch đã thực thi) ---
     if(trans.type != TRADE_TRANSACTION_DEAL_ADD) return;
     ulong dealTkt = trans.deal;
     if(!HistoryDealSelect(dealTkt)) return;
@@ -1188,50 +1192,52 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
     string          comment   = HistoryDealGetString(dealTkt,  DEAL_COMMENT);
     double          dealPrice = HistoryDealGetDouble(dealTkt,  DEAL_PRICE);
 
-    //=== DEAL IN: pending order kich hoat thanh position ===
+    //=== DEAL IN: pending order kích hoạt thành position ===
     if(dealEntry == DEAL_ENTRY_IN) {
-
-        g_state       = STATE_POSITION;
+        g_state        = STATE_POSITION;
         g_lastFillTime = TimeCurrent();
         g_filledPosId  = posId;
-        // Whipsaw check (Phan 8.1): neu ca 2 leg fill trong < 3 giay -> giu ca 2
-        // CheckOrphanOrder() se xu ly huy leg con lai sau ORPHAN_CHECK_S giay
+        // Whipsaw check: nếu cả 2 leg fill trong < 3 giây -> giữ cả 2
+        // CheckOrphanOrder() sẽ xử lý hủy leg còn lại sau ORPHAN_CHECK_S giây
     }
 
-    //=== DEAL OUT: position dong ===
+    //=== DEAL OUT: position đóng ===
     if(dealEntry == DEAL_ENTRY_OUT || dealEntry == DEAL_ENTRY_OUT_BY) {
         bool isManual    = (StringFind(comment, "close") >= 0 && StringFind(comment, "EOD") < 0);
         bool isEOD       = (StringFind(comment, "EOD") >= 0);
         bool isDailyStop = (StringFind(comment, "Daily") >= 0 || StringFind(comment, "Force") >= 0);
 
-        //--- Manual close: log va skip reset (Phan 4.4) ---
+        //--- Manual close: log và skip reset ---
         if(isManual && !isEOD && !isDailyStop) {
             UpdateAfterTrade(pl);
             g_state = STATE_IDLE;
             return;
         }
 
-        //--- TP hit ---
+        //--- Trailing SL hit với lãi (peak qua T1, đóng dương) ---
         if(pl > 0 && !isEOD && !isDailyStop) {
             NotifyCloseTP(posId, pl);
+            PeakRemove(posId);
             UpdateAfterTrade(pl);
             g_state = STATE_IDLE;
         }
-        //--- SL hit (initial SL hoac trailing SL) ---
+        //--- SL hit (initial SL hoặc trailing SL) ---
         else if(pl <= 0 && !isEOD && !isDailyStop) {
             NotifyCloseSL(posId, pl);
 
-            // Phan biet trailing SL hit vs initial SL hit
-            bool isInitialSL = (pl <= -(InpStopLoss * 0.8 * InpLotSize));  // ~gia tri lo SL ban dau
+            // Nếu peak chưa vượt T1Trigger -> initial SL hit (trailing chưa kích hoạt lần nào)
+            // Nếu peak đã vượt T1Trigger   -> trailing SL hit (đã bảo vệ được phần lãi)
+            double peakForPos = PeakGet(posId);
+            PeakRemove(posId);
+            bool isInitialSL = (peakForPos < InpT1Trigger);
+
             if(isInitialSL) {
                 UpdateAfterTrade(pl);
                 g_state = STATE_RECOVERING;
-                // Thu reset sau khi dam bao khong con position/order nao
-                if(CountMyPositions() == 0 && CountMyPendingOrders() == 0){
+                if(CountMyPositions() == 0 && CountMyPendingOrders() == 0)
                     TryReset(dealPrice);
-                }
             } else {
-                // Trailing SL hit -> reset streak counter theo spec (Phan 4.4)
+                // Trailing SL hit -> không tính vào loss streak
                 g_lossStreak = 0;
                 g_totalTrades++;
                 g_grossLoss   += pl;
@@ -1241,21 +1247,242 @@ void OnTradeTransaction(const MqlTradeTransaction& trans,
         }
         //--- EOD / Daily Stop close ---
         else {
+            PeakRemove(posId);
             UpdateAfterTrade(pl);
             g_state = STATE_IDLE;
         }
     }
 }
 
-bool CreateLable(CChartObjectLabel &lable, string name, string des, int x, int y){
-    // Tạo lable và thiết lập thuộc tính
-    if(!lable.Create(0, name, 0, x, y))
-        return false;
+//+------------------------------------------------------------------+
+//| OnChartEvent — Xử lý click nút                                  |
+//+------------------------------------------------------------------+
+void OnChartEvent(const int id, const long& lp, const double& dp, const string& sp) {
+    if(id != CHARTEVENT_OBJECT_CLICK) return;
+    if(sp == GUI + "BtnCloseAll") {
+        CloseAllPositions("Manual");
+        CancelAllPendingOrders();
+    }
+    ObjectSetInteger(0, sp, OBJPROP_STATE, false);
+    UpdateGUI();
+}
 
-    lable.Description(des);
-    lable.Color(clrWhite);
-    lable.Font("Calibri");
-    lable.FontSize(12);
+//+------------------------------------------------------------------+
+//|  GUI — Panel hệ thống                                           |
+//+------------------------------------------------------------------+
 
-    return true;
+void Lbl(string name, string text, int x, int y, color clr = clrSilver, int sz = 9) {
+    string obj = GUI + name;
+    if(ObjectFind(0, obj) < 0) {
+        ObjectCreate(0, obj, OBJ_LABEL, 0, 0, 0);
+        ObjectSetInteger(0, obj, OBJPROP_CORNER,     CORNER_LEFT_UPPER);
+        ObjectSetInteger(0, obj, OBJPROP_BACK,       false);
+        ObjectSetInteger(0, obj, OBJPROP_SELECTABLE, false);
+    }
+    ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, x);
+    ObjectSetInteger(0, obj, OBJPROP_YDISTANCE, y);
+    ObjectSetString(0,  obj, OBJPROP_TEXT,      text);
+    ObjectSetString(0,  obj, OBJPROP_FONT,      "Consolas");
+    ObjectSetInteger(0, obj, OBJPROP_FONTSIZE,  sz);
+    ObjectSetInteger(0, obj, OBJPROP_COLOR,     clr);
+}
+
+void CreateBG(string name, int x, int y, int w, int h, color bg, color border) {
+    string obj = GUI + name;
+    if(ObjectFind(0, obj) < 0) {
+        ObjectCreate(0, obj, OBJ_RECTANGLE_LABEL, 0, 0, 0);
+        ObjectSetInteger(0, obj, OBJPROP_CORNER,      CORNER_LEFT_UPPER);
+        ObjectSetInteger(0, obj, OBJPROP_BORDER_TYPE, BORDER_FLAT);
+        ObjectSetInteger(0, obj, OBJPROP_WIDTH,       1);
+        ObjectSetInteger(0, obj, OBJPROP_BACK,        false);
+        ObjectSetInteger(0, obj, OBJPROP_SELECTABLE,  false);
+    }
+    ObjectSetInteger(0, obj, OBJPROP_XDISTANCE, x);
+    ObjectSetInteger(0, obj, OBJPROP_YDISTANCE, y);
+    ObjectSetInteger(0, obj, OBJPROP_XSIZE,     w);
+    ObjectSetInteger(0, obj, OBJPROP_YSIZE,     h);
+    ObjectSetInteger(0, obj, OBJPROP_BGCOLOR,   bg);
+    ObjectSetInteger(0, obj, OBJPROP_COLOR,     border);
+}
+
+void CreateBtn(string name, string text, int x, int y, int w, int h, color bg, color border = clrSilver) {
+    string obj = GUI + name;
+    if(ObjectFind(0, obj) < 0) {
+        ObjectCreate(0, obj, OBJ_BUTTON, 0, 0, 0);
+        ObjectSetInteger(0, obj, OBJPROP_CORNER,     CORNER_LEFT_UPPER);
+        ObjectSetString(0,  obj, OBJPROP_FONT,       "Consolas");
+        ObjectSetInteger(0, obj, OBJPROP_FONTSIZE,   9);
+        ObjectSetInteger(0, obj, OBJPROP_BACK,       false);
+        ObjectSetInteger(0, obj, OBJPROP_SELECTABLE, false);
+    }
+    ObjectSetInteger(0, obj, OBJPROP_XDISTANCE,  x);
+    ObjectSetInteger(0, obj, OBJPROP_YDISTANCE,  y);
+    ObjectSetInteger(0, obj, OBJPROP_XSIZE,      w);
+    ObjectSetInteger(0, obj, OBJPROP_YSIZE,      h);
+    ObjectSetString(0,  obj, OBJPROP_TEXT,       text);
+    ObjectSetInteger(0, obj, OBJPROP_COLOR,      clrWhite);
+    ObjectSetInteger(0, obj, OBJPROP_BGCOLOR,    bg);
+    ObjectSetInteger(0, obj, OBJPROP_BORDER_COLOR, border);
+    ObjectSetInteger(0, obj, OBJPROP_STATE,      false);
+}
+
+void UpdateGUI() {
+    double balance = AccountInfoDouble(ACCOUNT_BALANCE);
+    double equity  = AccountInfoDouble(ACCOUNT_EQUITY);
+    double spread  = (double)SymbolInfoInteger(_Symbol, SYMBOL_SPREAD);
+
+    // Tính floating từ positions đang mở
+    double floatPL = 0;
+    int    nPos = 0, nPend = 0;
+    for(int i = PositionsTotal() - 1; i >= 0; i--) {
+        if(!g_posInfo.SelectByIndex(i)) continue;
+        if(g_posInfo.Magic() != InpMagicNumber || g_posInfo.Symbol() != _Symbol) continue;
+        floatPL += g_posInfo.Profit() + g_posInfo.Swap();
+        nPos++;
+    }
+    for(int i = OrdersTotal() - 1; i >= 0; i--) {
+        if(!g_orderInfo.SelectByIndex(i)) continue;
+        if(g_orderInfo.Magic() != InpMagicNumber || g_orderInfo.Symbol() != _Symbol) continue;
+        nPend++;
+    }
+
+    MqlDateTime dt;
+    TimeToStruct(TimeLocal(), dt);
+    string tStr = StringFormat("%04d/%02d/%02d  %02d:%02d:%02d",
+                               dt.year, dt.mon, dt.day, dt.hour, dt.min, dt.sec);
+
+    // Trạng thái EA
+    string stateStr; color stateClr;
+    switch(g_state) {
+        case STATE_IDLE:         stateStr = "IDLE — Chờ filter";      stateClr = clrSilver;     break;
+        case STATE_PLACING:      stateStr = "PLACING — Đang đặt";     stateClr = clrYellow;     break;
+        case STATE_WAITING:      stateStr = "WAITING — Chờ fill";     stateClr = clrYellow;     break;
+        case STATE_POSITION:     stateStr = "ACTIVE — Có lệnh";       stateClr = clrLimeGreen;  break;
+        case STATE_RECOVERING:   stateStr = "RECOVERING";              stateClr = clrOrange;     break;
+        case STATE_PAUSED:       stateStr = "PAUSED — Loss streak";    stateClr = clrOrange;     break;
+        case STATE_DAILY_STOP:   stateStr = "DAILY STOP";              stateClr = clrTomato;     break;
+        case STATE_EOD_CLOSE:    stateStr = "EOD — Đóng lệnh";        stateClr = clrTomato;     break;
+        case STATE_DISCONNECTED: stateStr = "DISCONNECTED";            stateClr = clrTomato;     break;
+        default:                 stateStr = "UNKNOWN";                 stateClr = clrSilver;     break;
+    }
+
+    // Màu P/L
+    color cFloat = (floatPL   >= 0) ? clrLimeGreen : clrTomato;
+    color cDay   = (g_todayProfit >= 0) ? clrLimeGreen : clrTomato;
+
+    // Trạng thái bộ lọc
+    bool   bTime  = IsInTradingHour();
+    bool   bRoll  = !IsInRolloverWindow();
+    bool   bSprd  = IsSpreadOK();
+    bool   bATR   = IsATROK();
+    bool   bADX   = IsADXOK();
+    bool   allOK  = (bTime && bRoll && bSprd && bATR && bADX);
+    color  fcOK   = clrLimeGreen;
+    color  fcFail = clrTomato;
+
+    // Nếu có pause, hiển thị thời gian còn lại
+    string streakStr;
+    if(g_state == STATE_PAUSED && g_pauseUntil > 0) {
+        int sec = (int)(g_pauseUntil - TimeCurrent());
+        if(sec > 0)
+            streakStr = StringFormat("%d/%d  (pause %dm%ds)",
+                        g_lossStreak, InpMaxLossStreak, sec/60, sec%60);
+        else
+            streakStr = StringFormat("%d/%d  (resuming...)", g_lossStreak, InpMaxLossStreak);
+    } else {
+        streakStr = StringFormat("%d / %d", g_lossStreak, InpMaxLossStreak);
+    }
+    color cStreak = (g_lossStreak >= InpMaxLossStreak) ? clrTomato
+                  : (g_lossStreak >= InpMaxLossStreak - 1) ? clrOrange
+                  : clrSilver;
+
+    int pX  = InpPanelX;
+    int pY  = InpPanelY;
+    int pW  = InpPanelW;
+    int s   = InpLineH;
+    int sz  = InpFontSz;
+    int cx  = pX + 8;
+
+    // ── PANEL 1: TRẠNG THÁI ──
+    int p1H = (InpPanel1H > 0) ? InpPanel1H
+            : 10 + (s+2) + (s-3) + 3*s + (s-3) + 3*s + (s-3) + 5*s + 8;
+    CreateBG("BG1", pX, pY, pW, p1H, C'14,17,26', C'50,65,120');
+
+    int y = pY + 8;
+    Lbl("TT",  "  BOT XAUUSD v2.0",                  cx, y, C'80,160,255', sz+1); y += s+2;
+    Lbl("S0",  "────────────────────────",            cx, y, C'45,58,105'        ); y += s-3;
+    Lbl("Ti",  "Time  : " + tStr,                    cx, y, clrSilver,      sz  ); y += s;
+    Lbl("St",  "State : " + stateStr,                cx, y, stateClr,       sz  ); y += s;
+    Lbl("Mg",  StringFormat("Magic : %d",InpMagicNumber), cx, y, C'80,80,80', sz); y += s;
+    Lbl("S1",  "────────────────────────",            cx, y, C'45,58,105'        ); y += s-3;
+    Lbl("Bal", StringFormat("Balance : $%.2f", balance),  cx, y, clrSilver, sz  ); y += s;
+    Lbl("Eq",  StringFormat("Equity  : $%.2f", equity),   cx, y, clrSilver, sz  ); y += s;
+    Lbl("DPL", StringFormat("Day P/L : $%.2f", g_todayProfit), cx, y, cDay, sz  ); y += s;
+    Lbl("S2",  "────────────────────────",            cx, y, C'45,58,105'        ); y += s-3;
+    Lbl("FL",  StringFormat("Float   : $%.2f", floatPL),  cx, y, cFloat,    sz  ); y += s;
+    Lbl("Spd", StringFormat("Spread  : %.0f pts", spread), cx, y, clrSilver, sz ); y += s;
+    Lbl("Pos", StringFormat("Lệnh    : %d pos  %d pend",nPos,nPend), cx,y, clrSilver, sz); y += s;
+    Lbl("Str", "Streak  : " + streakStr,              cx, y, cStreak,       sz  ); y += s;
+
+    // ── PANEL 2: BỘ LỌC ──
+    int p2Y = pY + p1H + InpPanelGap;
+    int p2H = (InpPanel2H > 0) ? InpPanel2H
+            : 10 + (s+2) + 5*s + 8;
+    CreateBG("BG2", pX, p2Y, pW, p2H, C'17,21,32', C'65,90,160');
+
+    y = p2Y + 8;
+    Lbl("FT",  "═══  BỘ LỌC  ═══",                   cx, y, C'90,140,230', sz  ); y += s+2;
+    Lbl("F1",  StringFormat("Trading Hour : %s  [%02d-%02d]",
+        bTime ? "✓ OK " : "✗ OFF",
+        InpStartHour, InpEndHour),                    cx, y, bTime ? fcOK : fcFail, sz); y += s;
+    Lbl("F2",  StringFormat("Rollover     : %s  [%02d:%02d-%02d:%02d]",
+        bRoll ? "✓ OK " : "✗ PAUSE",
+        InpRolloverStartH, InpRolloverStartM,
+        InpRolloverEndH,   InpRolloverEndM),           cx, y, bRoll ? fcOK : fcFail, sz); y += s;
+    Lbl("F3",  StringFormat("Spread       : %s  [max %d]",
+        bSprd ? "✓ OK " : "✗ HIGH",
+        InpMaxSpreadPts),                              cx, y, bSprd ? fcOK : fcFail, sz); y += s;
+    Lbl("F4",  StringFormat("ATR          : %s  [%.1f-%.1f]",
+        bATR  ? "✓ OK " : "✗ BLOCK",
+        InpATRMin, InpATRMax),                         cx, y, bATR ? fcOK : fcFail, sz); y += s;
+    Lbl("F5",  StringFormat("ADX          : %s  [%.0f-%.0f]",
+        bADX  ? "✓ OK " : "✗ BLOCK",
+        InpADXMin, InpADXMax),                         cx, y, bADX ? fcOK : fcFail, sz); y += s;
+
+    // ── PANEL 3: CẤU HÌNH TRAILING ──
+    int p3Y = p2Y + p2H + InpPanelGap;
+    int p3H = (InpPanel3H > 0) ? InpPanel3H
+            : 10 + (s+2) + 8*s + 8;
+    CreateBG("BG3", pX, p3Y, pW, p3H, C'14,19,28', C'50,70,130');
+
+    y = p3Y + 8;
+    Lbl("CT",  "═══  CẤU HÌNH  ═══",                 cx, y, C'90,140,230', sz  ); y += s+2;
+    Lbl("C0",  StringFormat("Lot: %.2f  |  SL: %.1f  |  Dist: %.1f",
+        InpLotSize, InpStopLoss, InpStraddleDist),     cx, y, clrSilver,    sz  ); y += s;
+    Lbl("C1s", "Trailing Tiers:",                     cx, y, C'100,125,195', sz ); y += s;
+    Lbl("C1",  StringFormat("T1 ≥%.1f → trail %.1f (dynamic)",
+        InpT1Trigger, InpT1Trail),                    cx, y, clrSilver,     sz  ); y += s;
+    Lbl("C2",  StringFormat("T2 ≥%.1f → lock %.1f",
+        InpT2Trigger, InpT2Lock),                     cx, y, clrSilver,     sz  ); y += s;
+    Lbl("C3",  StringFormat("T3 ≥%.1f → lock %.1f",
+        InpT3Trigger, InpT3Lock),                     cx, y, clrSilver,     sz  ); y += s;
+    Lbl("C4",  StringFormat("T4 ≥%.1f → lock %.1f",
+        InpT4Trigger, InpT4Lock),                     cx, y, clrSilver,     sz  ); y += s;
+    Lbl("C5",  StringFormat("T5 ≥%.1f → lock %.1f",
+        InpT5Trigger, InpT5Lock),                     cx, y, clrSilver,     sz  ); y += s;
+    Lbl("C6",  StringFormat("T6 ≥%.1f → lock %.1f",
+        InpT6Trigger, InpT6Lock),                     cx, y, clrSilver,     sz  ); y += s;
+
+    // ── PANEL 4: ĐIỀU KHIỂN ──
+    int p4Y = p3Y + p3H + InpPanelGap;
+    int p4H = (InpPanel4H > 0) ? InpPanel4H
+            : 10 + (s+2) + 26 + 8;
+    CreateBG("BG4", pX, p4Y, pW, p4H, C'17,21,32', C'65,90,160');
+
+    y = p4Y + 8;
+    Lbl("BT",  "═══  ĐIỀU KHIỂN  ═══",               cx, y, C'90,140,230', sz  ); y += s+2;
+    CreateBtn("BtnCloseAll", "  Close All Orders", cx, y, pW - 16, 24,
+              C'20,60,150', C'80,130,230');
+
+    ChartRedraw(0);
 }

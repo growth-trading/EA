@@ -18,6 +18,7 @@ input int    MagicNumber     = 20250526;  // Magic number (phân biệt với EA
 
 input group  "=== Lợi nhuận & Rủi ro ==="
 input double TakeProfitUSD   = 1.5;       // Chốt lời chu kỳ (USD)
+input double CycleLossUSD    = 25.0;      // Cắt lỗ chu kỳ - đóng loạt lệnh (USD)
 input double DailyProfitUSD  = 10.0;      // Mục tiêu lợi nhuận ngày - dừng bot (USD)
 input double DailyLossUSD    = 50.0;      // Lỗ tối đa trong ngày - dừng bot (USD)
 input int    TrailTriggerPips = 30;        // Số pip lãi để kích hoạt trailing SL
@@ -31,7 +32,7 @@ input int    EndHour         = 24;        // Giờ kết thúc giao dịch (gi�
 input int    EndMinute       = 0;         // Phút kết thúc giao dịch
 
 input group  "=== Bộ lọc ADX ==="
-input int             ADXPeriod      = 14;          // Chu kỳ ADX
+input int             ADXPeriod      = 7;          // Chu kỳ ADX
 input ENUM_TIMEFRAMES ADXTimeframe   = PERIOD_M1;   // Khung thời gian ADX
 input double          ADXMinStrength = 20.0;        // Ngưỡng ADX tối thiểu để vào lệnh
 
@@ -329,6 +330,15 @@ void OnTick()
     if (totalNetProfit >= TakeProfitUSD)
     {
         CloseAllPositions();
+        return;
+    }
+
+    // --- Kiểm tra SL chu kỳ ---
+    if (totalNetProfit <= -CycleLossUSD)
+    {
+        CloseAllPositions();
+        Print("Cycle loss limit đạt: ", DoubleToString(totalNetProfit, 2), " / -",
+              DoubleToString(CycleLossUSD, 2), " USD - Đóng loạt lệnh.");
         return;
     }
 
